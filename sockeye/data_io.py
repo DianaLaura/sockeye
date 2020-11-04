@@ -1698,12 +1698,12 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
             source_len = 0 if sources[0] is None else len(sources[0])
             target_len = 0 if target is None else len(target)
             if source_len > self.max_len_source:
-                logger.info("Trimming source sentence {} ({} -> {})".format(self.sentno + num_read,
+                logger.debug("Trimming source sentence {} ({} -> {})".format(self.sentno + num_read,
                                                                             source_len,
                                                                             self.max_len_source))
                 sources = [source[0: self.max_len_source] for source in sources]
             if target_len > self.max_len_target:
-                logger.info("Trimming target sentence {} ({} -> {})".format(self.sentno + num_read,
+                logger.debug("Trimming target sentence {} ({} -> {})".format(self.sentno + num_read,
                                                                             target_len,
                                                                             self.max_len_target))
                 target = target[0: self.max_len_target]
@@ -1714,7 +1714,10 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
             if num_read == self.batch_size:
                 break
 
+        aux = int(self.sentno / 1_000_000)
         self.sentno += num_read
+        if int(self.sentno / 1_000_000) != aux:
+            logger.info("Processed {} lines".format(self.sentno))
 
         if num_read == 0:
             self.next_batch = None
@@ -1996,13 +1999,14 @@ def create_batch_from_parallel_sample(source: mx.nd.NDArray, target: mx.nd.NDArr
     """
     Creates a Batch instance from parallel data.
     """
-    source_words = mx.nd.squeeze(mx.nd.slice(source, begin=(None, None, 0), end=(None, None, 1)), axis=2)
+    source_words = mx.nd.slice(source, begin=(None, None, 0), end=(None, None, 1)).squeeze(axis=2, inplace=True)
     source_length = mx.nd.sum(source_words != C.PAD_ID, axis=1)
     target_length = mx.nd.sum(target != C.PAD_ID, axis=1)
     length_ratio = source_length / target_length
 
-    samples = source.shape[0]
-    tokens = source.shape[1] * samples
+    source_shape = source.shape
+    samples = source_shape[0]
+    tokens = source_shape[1] * samples
 
     labels = {C.TARGET_LABEL_NAME: label, C.LENRATIO_LABEL_NAME: length_ratio}
 
