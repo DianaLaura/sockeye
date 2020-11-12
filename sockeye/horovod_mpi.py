@@ -18,8 +18,6 @@
 # Import Horovod but do not call `init()` yet.  Initialization should be called
 # as part of the main program after all modules (including Sockeye modules) have
 # been imported.
-
-from __future__ import annotations
 try:
     import horovod.mxnet as hvd
 except ImportError:

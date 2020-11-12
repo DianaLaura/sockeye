@@ -56,7 +56,6 @@ Optional arguments:
         open input vocabularies with specified encoding (default: utf-8)
 """
 
-from __future__ import annotations
 import argparse
 import sys
 import logging

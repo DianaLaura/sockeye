@@ -14,7 +14,6 @@
 """
 Implements data iterators and I/O related functions for sequence-to-sequence models.
 """
-from __future__ import annotations
 import bisect
 import logging
 import math

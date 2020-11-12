@@ -17,7 +17,7 @@ specified manually or automatically chosen according to one of several
 strategies. The default strategy of simply selecting the top-scoring N points
 works well in practice.
 """
-from __future__ import annotations
+
 import argparse
 import itertools
 import os

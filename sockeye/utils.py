@@ -14,8 +14,6 @@
 """
 A set of utility methods.
 """
-
-from __future__ import annotations
 import binascii
 import errno
 import glob
