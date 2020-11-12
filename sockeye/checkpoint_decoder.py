@@ -14,6 +14,8 @@
 """
 Implements a thin wrapper around Translator to compute BLEU scores on (a sample of) validation data during training.
 """
+from __future__ import annotations
+
 import logging
 import os
 import random

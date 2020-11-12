@@ -14,6 +14,7 @@
 """
 Defines commandline arguments for the main CLIs with reasonable defaults.
 """
+from __future__ import annotations
 import argparse
 import os
 import sys

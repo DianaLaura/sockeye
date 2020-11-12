@@ -14,6 +14,8 @@
 """
 Decoders for sequence-to-sequence models.
 """
+
+from __future__ import annotations
 import logging
 from abc import abstractmethod
 from itertools import islice

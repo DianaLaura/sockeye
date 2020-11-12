@@ -14,6 +14,8 @@
 """
 Functions to generate loss symbols for sequence-to-sequence models.
 """
+
+from __future__ import annotations
 import logging
 import math
 from abc import ABC, abstractmethod

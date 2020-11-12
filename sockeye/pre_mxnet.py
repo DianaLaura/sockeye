@@ -12,6 +12,7 @@
 # permissions and limitations under the License.
 '''Handle special settings that must be applied before mxnet is imported'''
 
+from __future__ import annotations
 import logging
 import os
 import sys

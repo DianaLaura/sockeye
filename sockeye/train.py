@@ -14,6 +14,8 @@
 """
 Simple Training CLI.
 """
+
+from __future__ import annotations
 from . import pre_mxnet
 # Called before importing mxnet or any module that imports mxnet
 pre_mxnet.init()

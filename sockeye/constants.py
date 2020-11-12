@@ -14,6 +14,8 @@
 """
 Defines various constants used throughout the project
 """
+
+from __future__ import annotations
 import sys
 
 import mxnet as mx

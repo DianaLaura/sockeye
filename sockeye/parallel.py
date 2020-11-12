@@ -11,6 +11,8 @@
 # express or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 """Utility functions for parallel processing."""
+
+from __future__ import annotations
 import threading
 
 try:

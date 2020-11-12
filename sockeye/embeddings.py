@@ -14,6 +14,8 @@
 """
 Command-line tool to inspect model embeddings.
 """
+
+from __future__ import annotations
 import argparse
 import sys
 import logging

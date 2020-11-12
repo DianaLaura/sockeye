@@ -14,7 +14,7 @@
 """
 CLI to rerank an nbest list of translations.
 """
-
+from __future__ import annotations
 import argparse
 from functools import partial
 import json
