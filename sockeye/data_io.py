@@ -673,7 +673,8 @@ def prepare_data(source_fnames: List[str],
 
     data_loader = RawParallelDatasetLoader(buckets=buckets,
                                            eos_id=C.EOS_ID,
-                                           pad_id=C.PAD_ID)
+                                           pad_id=C.PAD_ID,
+                                           sep_id=C.SEP_ID)
 
     # 3. convert each shard to serialized ndarrays
     if max_processes == 1:
@@ -872,7 +873,8 @@ def get_prepared_data_iters(prepared_data_dir: str,
 
     data_loader = RawParallelDatasetLoader(buckets=buckets,
                                            eos_id=C.EOS_ID,
-                                           pad_id=C.PAD_ID)
+                                           pad_id=C.PAD_ID,
+                                           sep_id=C.SEP_ID)
 
     validation_iter = get_validation_data_iter(data_loader=data_loader,
                                                validation_sources=validation_sources,
@@ -971,7 +973,8 @@ def get_training_data_iters(sources: List[str],
     # Pass 3: Load the data into memory and return the iterator.
     data_loader = RawParallelDatasetLoader(buckets=buckets,
                                            eos_id=C.EOS_ID,
-                                           pad_id=C.PAD_ID)
+                                           pad_id=C.PAD_ID,
+                                           sep_id=C.SEP_ID)
 
     training_data = data_loader.load(sources_sentences, targets_sentences,
                                      data_statistics.num_sents_per_bucket).fill_up(bucket_batch_sizes)
@@ -1043,6 +1046,7 @@ def get_scoring_data_iters(sources: List[str],
     data_loader = RawParallelDatasetLoader(buckets=[bucket],
                                            eos_id=C.EOS_ID,
                                            pad_id=C.PAD_ID,
+                                           sep_id=C.SEP_ID,
                                            skip_blanks=False)
 
     # ...one iterator to traverse them all,
@@ -1268,10 +1272,12 @@ class SequenceReader:
         self.vocab = vocabulary
         self.bos_id = None
         self.eos_id = None
+        self.sep_id = None
         if vocabulary is not None:
             assert vocab.is_valid_vocab(vocabulary)
             self.bos_id = C.BOS_ID
             self.eos_id = C.EOS_ID
+            self.sep_id = C.SEP_ID
         else:
             check_condition(not add_bos and not add_eos, "Adding a BOS or EOS symbol requires a vocabulary")
         self.add_bos = add_bos
