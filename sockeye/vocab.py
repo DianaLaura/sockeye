@@ -154,7 +154,7 @@ def is_valid_vocab(vocab: Vocab) -> bool:
     """
     Checks if a vocabulary is valid. We define valid as:
     1. All indices from 0 to num_words - 1 are present without duplicates.
-    2. PAD_SYMBOL has word id 0, UNK_SYMBOL has word id 1, BOS_SYMBOL has word id 2, EOS_SYMBOL has word id 3.
+    2. PAD_SYMBOL has word id 0, UNK_SYMBOL has word id 1, BOS_SYMBOL has word id 2, EOS_SYMBOL has word id 3, SEP_SYMBOL has word id 4.
     """
     if vocab[C.PAD_SYMBOL] != C.PAD_ID:
         logger.warning("PAD_SYMBOL does not have word id 0 in vocabulary.")
