@@ -168,7 +168,7 @@ def is_valid_vocab(vocab: Vocab) -> bool:
     if vocab[C.EOS_SYMBOL] != C.EOS_ID:
         logger.warning("EOS_SYMBOL does not have word id 3 in vocabulary.")
         return False
-    if vocab[C.SEP_ID] != C.SEP_ID:
+    if vocab[C.SEP_SYMBOL] != C.SEP_ID:
         logger.warning("SEP_SYMBOL does not have word id 4 in vocabulary.")
     word_ids = []
     for word, word_id in vocab.items():

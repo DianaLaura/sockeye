@@ -36,22 +36,22 @@ def test_merge_raw_vocabs():
 test_vocab = [
         # Example 1
         (["one two three", "one two three"], None, 1,
-         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "two": 4, "three": 5, "one": 6}),
+         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "<sep>":4, "two": 5, "three": 6, "one": 7}),
         (["one two three", "one two three"], 3, 1,
-         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "two": 4, "three": 5, "one": 6}),
+         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "<sep>":4, "two": 5, "three": 6, "one": 7}),
         (["one two three", "one two three"], 3, 2,
-         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "two": 4, "three": 5, "one": 6}),
+         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "<sep>":4, "two": 5, "three": 6, "one": 7}),
         (["one two three", "one two three"], 2, 2,
-         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "two": 4, "three": 5}),
+         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "<sep>":4, "two": 5, "three": 6}),
         # Example 2
         (["one one two three ", "one two three"], 3, 1,
-         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "one": 4, "two": 5, "three": 6}),
+         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "<sep>":4, "one": 5, "two": 6, "three": 7}),
         (["one one two three ", "one two three"], 3, 2,
-         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "one": 4, "two": 5, "three": 6}),
+         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "<sep>":4, "one": 5, "two": 6, "three": 7}),
         (["one one two three ", "one two three"], 3, 3,
-         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "one": 4}),
+         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "<sep>":4, "one": 5}),
         (["one one two three ", "one two three"], 2, 1,
-         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "one": 4, "two": 5}),
+         {"<pad>": 0, "<unk>": 1, "<s>": 2, "</s>": 3, "<sep>":4, "one": 5, "two": 6}),
         ]
 
 
@@ -62,7 +62,9 @@ def test_build_vocab(data, size, min_count, expected):
 
 
 @pytest.mark.parametrize("num_types,pad_to_multiple_of,expected_vocab_size",
-                         [(4, None, 8), (2, 8, 8), (4, 8, 8), (8, 8, 16), (10, 16, 16), (13, 16, 32)])
+                         [(4, None, 9), (2, 8, 8), (4, 8, 16), (8, 8, 16), (10, 16, 16), (13, 16, 32)])
+                         #changed parameterization, because the size of C.VOCAB_SYMBOLS was increased by one element)
+
 def test_padded_build_vocab(num_types, pad_to_multiple_of, expected_vocab_size):
     data = [" ".join('word%d' % i for i in range(num_types))]
     size = None
@@ -83,7 +85,6 @@ test_constants = [
         (["one one two three ", "one two three"], 2, 1, C.VOCAB_SYMBOLS),
         ]
 
-
 @pytest.mark.parametrize("data,size,min_count,constants", test_constants)
 def test_constants_in_vocab(data, size, min_count, constants):
     vocab = build_vocab(data, size, min_count)
@@ -99,13 +100,13 @@ def test_get_ordered_tokens_from_vocab(vocab, expected_output):
 
 @pytest.mark.parametrize(
     "vocab, expected_result",
-    [
+        [
         ({symbol: idx for idx, symbol in enumerate(C.VOCAB_SYMBOLS + ["w1", "w2"])}, True),
         # A vocabulary with just the valid symbols doesn't make much sense but is technically valid
         ({symbol: idx for idx, symbol in enumerate(C.VOCAB_SYMBOLS)}, True),
         # Manually specifying the list of required special symbol so that we avoid making a backwards-incompatible
         # change by adding a new symbol to C.VOCAB_SYMBOLS
-        ({symbol: idx for idx, symbol in enumerate([C.PAD_SYMBOL, C.UNK_SYMBOL, C.BOS_SYMBOL, C.EOS_SYMBOL])}, True),
+        ({symbol: idx for idx, symbol in enumerate([C.PAD_SYMBOL, C.UNK_SYMBOL, C.BOS_SYMBOL, C.EOS_SYMBOL, C.SEP_SYMBOL])}, True),
         # PAD_ID must have word id 0
         ({symbol: idx for idx, symbol in enumerate(reversed(C.VOCAB_SYMBOLS))}, False),
         ({symbol: idx for idx, symbol in enumerate(list(reversed(C.VOCAB_SYMBOLS)) + ["w1", "w2"])}, False),
@@ -113,8 +114,10 @@ def test_get_ordered_tokens_from_vocab(vocab, expected_output):
         ({symbol: idx if symbol != "w2" else idx + 1 for idx, symbol in enumerate(C.VOCAB_SYMBOLS + ["w1", "w2"])}, False),
         # There shouldn't be any duplicate word ids
         ({symbol: idx if symbol != "w2" else idx - 1 for idx, symbol in enumerate(C.VOCAB_SYMBOLS + ["w1", "w2"])}, False),
-    ]
+        ]
 )
+
+
 def test_verify_valid_vocab(vocab, expected_result):
     assert is_valid_vocab(vocab) == expected_result
 
