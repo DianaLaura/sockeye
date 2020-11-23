@@ -78,11 +78,13 @@ test_constants = [
         (["one two three", "one two three"], 3, 1, C.VOCAB_SYMBOLS),
         (["one two three", "one two three"], 3, 2, C.VOCAB_SYMBOLS),
         (["one two three", "one two three"], 2, 2, C.VOCAB_SYMBOLS),
+        (["one two three <sep> four three one", "one two <sep> three four"], 4, 1, C.VOCAB_SYMBOLS),
         # Example 2
         (["one one two three ", "one two three"], 3, 1, C.VOCAB_SYMBOLS),
         (["one one two three ", "one two three"], 3, 2, C.VOCAB_SYMBOLS),
         (["one one two three ", "one two three"], 3, 3, C.VOCAB_SYMBOLS),
         (["one one two three ", "one two three"], 2, 1, C.VOCAB_SYMBOLS),
+        (["one one <sep> two three", "one two <sep> three"], 3, 2, C.VOCAB_SYMBOLS)
         ]
 
 @pytest.mark.parametrize("data,size,min_count,constants", test_constants)
