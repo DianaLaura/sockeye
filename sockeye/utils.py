@@ -205,8 +205,14 @@ def get_tokens(line: str) -> Iterator[str]:
     :return: Iterator over tokens.
     """
     for token in line.rstrip().split():
-        if len(token) > 0:
+        if (len(token) > 0) and (token != C.SEP_SYMBOL):
             yield token
+
+def get_timestamps(line: str) -> Iterator[str]:
+    for timestamp in line.rstrip().split():
+        if (len(timestamp) > 0) and (timestamp != C.SEP_SYMBOL):
+            yield timestamp
+            
 
 
 def is_gzip_file(filename: str) -> bool:
@@ -231,6 +237,7 @@ def smart_open(filename: str, mode: str = "rt", ftype: str = "auto", errors: str
     :param errors: Encoding error handling during reading. Defaults to 'replace'.
     :return: File descriptor.
     """
+    
     if ftype in ('gzip', 'gz') \
             or (ftype == 'auto' and filename.endswith(".gz")) \
             or (ftype == 'auto' and 'r' in mode and is_gzip_file(filename)):

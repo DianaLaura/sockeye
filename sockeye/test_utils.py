@@ -66,6 +66,33 @@ def generate_digits_file(source_path: str,
                 digits.sort()
             print(C.TOKEN_SEPARATOR.join(digits), file=target_out)
 
+def generate_digits_time_file(source_path: str,
+                         target_path: str,
+                         time_source_path: str,
+                         line_count: int = 100,
+                         line_length: int = 9,
+                         sort_target: bool = False,
+                         line_count_empty: int = 0,
+                         seed=13):
+    assert line_count_empty <= line_count
+    random_gen = random.Random(seed)
+    with open(source_path, "w") as source_out, open(target_path, "w") as target_out, open(time_source_path, "w") as time_out:
+        all_digits = []
+        time = 0
+        for _ in range(line_count - line_count_empty):
+            digits = [random_gen.choice(_DIGITS) for _ in range(random_gen.randint(1, line_length))]
+            all_digits.append(digits)
+        for _ in range(line_count_empty):
+            all_digits.append([])
+        random_gen.shuffle(all_digits)
+        for digits in all_digits:
+            print(C.TOKEN_SEPARATOR.join(digits), file=source_out)
+            print(C.TOKEN_SEPARATOR + str(time), file=time_out)
+            time += 1
+            if sort_target:
+                digits.sort()
+            print(C.TOKEN_SEPARATOR.join(digits), file=target_out)
+
 
 def generate_low_high_factors(input_path: str, output_path: str):
     """
@@ -169,6 +196,82 @@ def tmp_digits_dataset(prefix: str,
                 data['test_target_factors'].append(dev_factor_path)
 
         yield data
+
+@contextmanager
+def tmp_digits_timestamp_dataset(prefix: str,
+                       train_line_count: int, train_line_count_empty: int, train_max_length: int,
+                       dev_line_count: int, dev_max_length: int,
+                       test_line_count: int, test_line_count_empty: int, test_max_length: int,
+                       sort_target: bool = False,
+                       seed_train: int = 13, seed_dev: int = 13,
+                       with_n_source_factors: int = 0,
+                       with_n_target_factors: int = 0) -> Dict[str, Any]:
+    """
+    Creates a temporary dataset with train, dev, and test, and timestamp files for the source side for all three sets.
+    Returns a dictionary with paths to the respective temporary files.
+    """
+    with TemporaryDirectory(prefix=prefix) as work_dir:
+        # Simple digits files for train/dev data
+        train_source_path = os.path.join(work_dir, "train.src")
+        train_target_path = os.path.join(work_dir, "train.tgt")
+        train_source_time_path = os.path.join(work_dir, "train_src.time")
+        dev_source_path = os.path.join(work_dir, "dev.src")
+        dev_target_path = os.path.join(work_dir, "dev.tgt")
+        dev_source_time_path = os.path.join(work_dir, "dev_src.time")
+        test_source_path = os.path.join(work_dir, "test.src")
+        test_target_path = os.path.join(work_dir, "test.tgt")
+        test_source_time_path = os.path.join(work_dir, "test_src.time")
+
+        generate_digits_time_file(train_source_path, train_target_path, train_source_time_path, train_line_count, train_max_length,
+                             line_count_empty=train_line_count_empty, sort_target=sort_target, seed=seed_train)
+        generate_digits_time_file(dev_source_path, dev_target_path, dev_source_time_path, dev_line_count, dev_max_length, sort_target=sort_target,
+                             seed=seed_dev)
+        generate_digits_time_file(test_source_path, test_target_path,test_source_path, test_line_count, test_max_length,
+                             line_count_empty=test_line_count_empty, sort_target=sort_target, seed=seed_dev)
+        data = {'work_dir': work_dir,
+                'train_source': train_source_path,
+                'train_target': train_target_path,
+                'train_source_timestamps': train_source_time_path,
+                'dev_source': dev_source_path,
+                'dev_target': dev_target_path,
+                'dev_source_timestamps': dev_source_time_path,
+                'test_source': test_source_path,
+                'test_target': test_target_path,
+                'test_source_timestamps': test_source_time_path}
+
+
+        if with_n_source_factors > 0:
+            data['train_source_factors'] = []
+            data['dev_source_factors'] = []
+            data['test_source_factors'] = []
+            for i in range(with_n_source_factors):
+                train_factor_path = train_source_path + ".factors%d" % i
+                dev_factor_path = dev_source_path + ".factors%d" % i
+                test_factor_path = test_source_path + ".factors%d" % i
+                generate_low_high_factors(train_source_path, train_factor_path)
+                generate_low_high_factors(dev_source_path, dev_factor_path)
+                generate_low_high_factors(test_source_path, test_factor_path)
+                data['train_source_factors'].append(train_factor_path)
+                data['dev_source_factors'].append(dev_factor_path)
+                data['test_source_factors'].append(test_factor_path)
+
+        if with_n_target_factors > 0:
+            data['train_target_factors'] = []
+            data['dev_target_factors'] = []
+            data['test_target_factors'] = []
+            for i in range(with_n_target_factors):
+                train_factor_path = train_target_path + ".factors%d" % i
+                dev_factor_path = dev_target_path + ".factors%d" % i
+                test_factor_path = test_target_path + ".factors%d" % i
+                generate_odd_even_factors(train_target_path, train_factor_path)
+                generate_odd_even_factors(dev_target_path, dev_factor_path)
+                generate_odd_even_factors(test_target_path, test_factor_path)
+                data['train_target_factors'].append(train_factor_path)
+                data['dev_target_factors'].append(dev_factor_path)
+                data['test_target_factors'].append(dev_factor_path)
+
+        yield data
+
 
 
 TRAIN_PARAMS_COMMON = "--use-cpu --max-seq-len {max_len} --source {train_source} --target {train_target}" \

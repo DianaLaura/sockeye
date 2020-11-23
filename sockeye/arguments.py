@@ -435,11 +435,11 @@ def add_training_data_args(params, required=False):
                         type=regular_file(),
                         help='Target side of parallel training data.')
     params.add_argument('--source-frame-embeddings', '-sfe',
-                            required=False,
-                            nargs='+',
-                            type=regular_file(),
-                            default=[],
-                            help='File containing timestamps encoded as frame / single number for each token in source file')
+                        required=False,
+                        nargs='+',
+                        type=regular_file(),
+                        default=[],
+                        help='File containing timestamps encoded as frame / single number for each token in source file')
 
 
 def add_validation_data_params(params):

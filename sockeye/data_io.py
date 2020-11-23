@@ -34,7 +34,7 @@ from . import config
 from . import constants as C
 from . import horovod_mpi
 from . import vocab
-from .utils import check_condition, smart_open, get_tokens, OnlineMeanAndVariance
+from .utils import check_condition, smart_open, get_tokens, get_timestamps, OnlineMeanAndVariance
 
 logger = logging.getLogger(__name__)
 
@@ -273,12 +273,18 @@ def calculate_length_statistics(source_iterables: Sequence[Iterable[Any]],
 
 def analyze_sequence_lengths(sources: List[str],
                              targets: List[str],
+                             source_timestamps: List[str],
                              vocab_sources: List[vocab.Vocab],
                              vocab_targets: List[vocab.Vocab],
                              max_seq_len_source: int,
                              max_seq_len_target: int) -> 'LengthStatistics':
-    train_sources_sentences, train_targets_sentences = create_sequence_readers(sources, targets,
-                                                                               vocab_sources, vocab_targets)
+    breakpoint()
+    if len(source_timestamps) > 0 :
+        train_sources_sentences, train_targets_sentences = create_sequence_readers_time(sources, source_timestamps, targets,
+                                                                                vocab_sources, vocab_targets)
+    else:
+        train_sources_sentences, train_targets_sentences = create_sequence_readers(sources, targets,
+                                                                                vocab_sources, vocab_targets)
 
     length_statistics = calculate_length_statistics(train_sources_sentences, train_targets_sentences,
                                                     max_seq_len_source, max_seq_len_target)
@@ -398,6 +404,7 @@ class DataStatisticsAccumulator:
 
 def shard_data(source_fnames: List[str],
                target_fnames: List[str],
+               source_timestamps: List[str],
                source_vocabs: List[vocab.Vocab],
                target_vocabs: List[vocab.Vocab],
                num_shards: int,
@@ -437,9 +444,12 @@ def shard_data(source_fnames: List[str],
                           range(len(source_fnames))]
         targets_shards = [[exit_stack.enter_context(smart_open(f, mode="wt")) for f in targets_shard_fnames[i]] for i in
                           range(len(target_fnames))]
-
-        source_readers, target_readers = create_sequence_readers(source_fnames, target_fnames,
-                                                                 source_vocabs, target_vocabs)
+        if len(source_timestamps) > 0 :
+            source_readers, target_readers = create_sequence_readers_time(source_fnames, target_fnames, source_timestamps,
+                                                                    source_vocabs, target_vocabs)
+        else:
+            source_readers, target_readers = create_sequence_readers(source_fnames, target_fnames,
+                                                                    source_vocabs, target_vocabs)
 
         random_shard_iter = iter(lambda: random.randrange(num_shards), None)
 
@@ -592,7 +602,7 @@ def get_num_shards(num_samples: int, samples_per_shard: int, min_num_shards: int
 
 
 def save_shard(shard_idx: int, data_loader: RawParallelDatasetLoader,
-               shard_sources: List[str], shard_targets: List[str],
+               shard_sources: List[str], shard_targets: List[str], shard_timestamps: List[str],
                shard_stats: 'DataStatistics', output_prefix: str, keep_tmp_shard_files: bool):
     """
     Load shard source and target data files into NDArrays and save to disk.
@@ -606,8 +616,10 @@ def save_shard(shard_idx: int, data_loader: RawParallelDatasetLoader,
     :param output_prefix: The prefix of the output file name.
     :param keep_tmp_shard_files: Keep the sources/target files when it is True otherwise delete them.
     """
-    sources_sentences = [SequenceReader(s) for s in shard_sources]
-    targets_sentences = [SequenceReader(s) for s in shard_targets]
+    sources_sentences = [SequenceReader(s, shard_timestamps) for s in shard_sources]
+    target_timestamps=[]
+    targets_sentences = [SequenceReader(s, target_timestamps) for s in shard_targets]
+
     dataset = data_loader.load(sources_sentences, targets_sentences, shard_stats.num_sents_per_bucket)
     shard_fname = os.path.join(output_prefix, C.SHARD_NAME % shard_idx)
     shard_stats.log()
@@ -621,6 +633,7 @@ def save_shard(shard_idx: int, data_loader: RawParallelDatasetLoader,
 
 def prepare_data(source_fnames: List[str],
                  target_fnames: List[str],
+                 source_timestamps: List[str],
                  source_vocabs: List[vocab.Vocab],
                  target_vocabs: List[vocab.Vocab],
                  source_vocab_paths: List[Optional[str]],
@@ -642,7 +655,7 @@ def prepare_data(source_fnames: List[str],
     vocab.save_target_vocabs(target_vocabs, output_prefix)
 
     # Pass 1: get target/source length ratios.
-    length_statistics = analyze_sequence_lengths(source_fnames, target_fnames, source_vocabs, target_vocabs,
+    length_statistics = analyze_sequence_lengths(source_fnames, target_fnames, source_timestamps, source_vocabs, target_vocabs,
                                                  max_seq_len_source, max_seq_len_target)
 
     check_condition(length_statistics.num_sents > 0,
@@ -662,6 +675,7 @@ def prepare_data(source_fnames: List[str],
                 % (length_statistics.num_sents, num_shards, samples_per_shard, min_num_shards))
     shards, data_statistics = shard_data(source_fnames=source_fnames,
                                          target_fnames=target_fnames,
+                                         source_timestamps=source_timestamps,
                                          source_vocabs=source_vocabs,
                                          target_vocabs=target_vocabs,
                                          num_shards=num_shards,
@@ -673,15 +687,14 @@ def prepare_data(source_fnames: List[str],
 
     data_loader = RawParallelDatasetLoader(buckets=buckets,
                                            eos_id=C.EOS_ID,
-                                           pad_id=C.PAD_ID,
-                                           sep_id=C.SEP_ID)
+                                           pad_id=C.PAD_ID)
 
     # 3. convert each shard to serialized ndarrays
     if max_processes == 1:
         logger.info("Processing shards sequentially.")
         # Process shards sequentially without using multiprocessing
-        for shard_idx, (shard_sources, shard_targets, shard_stats) in enumerate(shards):
-            save_shard(shard_idx, data_loader, shard_sources, shard_targets,
+        for shard_idx, (shard_sources, shard_targets, shard_timestamps, shard_stats) in enumerate(shards):
+            save_shard(shard_idx, data_loader, shard_sources, shard_targets, shard_timestamps,
                        shard_stats, output_prefix, keep_tmp_shard_files)
     else:
         logger.info("Processing shards using %s processes.", max_processes)
@@ -754,6 +767,7 @@ def get_data_statistics(source_readers: Optional[Sequence[Iterable]],
 def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
                              validation_sources: List[str],
                              validation_targets: List[str],
+                             validation_source_timestamps: List[str],
                              buckets: List[Tuple[int, int]],
                              bucket_batch_sizes: List[BucketBatchSize],
                              source_vocabs: List[vocab.Vocab],
@@ -767,17 +781,22 @@ def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
     logger.info("=================================")
     logger.info("Creating validation data iterator")
     logger.info("=================================")
-    validation_length_statistics = analyze_sequence_lengths(validation_sources, validation_targets,
+    validation_length_statistics = analyze_sequence_lengths(validation_sources, validation_targets, validation_source_timestamps,
                                                             source_vocabs, target_vocabs,
                                                             max_seq_len_source, max_seq_len_target)
 
     check_condition(validation_length_statistics.num_sents > 0,
                     "No validation sequences found with length smaller or equal than the maximum sequence length."
                     "Consider increasing %s" % C.TRAINING_ARG_MAX_SEQ_LEN)
-
-    validation_sources_sentences, validation_targets_sentences = create_sequence_readers(validation_sources,
-                                                                                         validation_targets,
-                                                                                         source_vocabs, target_vocabs)
+    if len(validation_source_timestamps) > 0:
+        validation_sources_sentences, validation_targets_sentences = create_sequence_readers_time(validation_sources,
+                                                                                            validation_targets,
+                                                                                            validation_source_timestamps,
+                                                                                            source_vocabs, target_vocabs)
+    else:
+        validation_sources_sentences, validation_targets_sentences = create_sequence_readers(validation_sources,
+                                                                                            validation_targets,
+                                                                                            source_vocabs, target_vocabs)
 
     validation_data_statistics = get_data_statistics(validation_sources_sentences,
                                                      validation_targets_sentences,
@@ -802,6 +821,7 @@ def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
 def get_prepared_data_iters(prepared_data_dir: str,
                             validation_sources: List[str],
                             validation_targets: List[str],
+                            validation_source_timestamps: List[str],
                             shared_vocab: bool,
                             batch_size: int,
                             batch_type: str,
@@ -873,12 +893,12 @@ def get_prepared_data_iters(prepared_data_dir: str,
 
     data_loader = RawParallelDatasetLoader(buckets=buckets,
                                            eos_id=C.EOS_ID,
-                                           pad_id=C.PAD_ID,
-                                           sep_id=C.SEP_ID)
+                                           pad_id=C.PAD_ID)
 
     validation_iter = get_validation_data_iter(data_loader=data_loader,
                                                validation_sources=validation_sources,
                                                validation_targets=validation_targets,
+                                               validation_source_timestamps=validation_source_timestamps,
                                                buckets=buckets,
                                                bucket_batch_sizes=bucket_batch_sizes,
                                                source_vocabs=source_vocabs,
@@ -892,8 +912,10 @@ def get_prepared_data_iters(prepared_data_dir: str,
 
 def get_training_data_iters(sources: List[str],
                             targets: List[str],
+                            source_timestamps: List[Optional[str]],
                             validation_sources: List[str],
                             validation_targets: List[str],
+                            validation_source_timestamps: List[Optional[str]],
                             source_vocabs: List[vocab.Vocab],
                             target_vocabs: List[vocab.Vocab],
                             source_vocab_paths: List[Optional[str]],
@@ -916,8 +938,10 @@ def get_training_data_iters(sources: List[str],
 
     :param sources: Path to source training data (with optional factor data paths).
     :param targets: Path to target training data (with optional factor data paths).
+    :param source_timestamps: Path to timestamps / frames for the source training data (optional, needed for frame embeddings).
     :param validation_sources: Path to source validation data (with optional factor data paths).
     :param validation_targets: Path to target validation data (with optional factor data paths).
+    :param validation_source_timestamps: Path to timestamps / frames for source validation data (optional, needed for frame embeddings).
     :param source_vocabs: Source vocabulary and optional factor vocabularies.
     :param target_vocabs: Target vocabulary and optional factor vocabularies.
     :param source_vocab_paths: Path to source vocabularies.
@@ -940,8 +964,9 @@ def get_training_data_iters(sources: List[str],
     logger.info("===============================")
     logger.info("Creating training data iterator")
     logger.info("===============================")
+    breakpoint()
     # Pass 1: get target/source length ratios.
-    length_statistics = analyze_sequence_lengths(sources, targets, source_vocabs, target_vocabs,
+    length_statistics = analyze_sequence_lengths(sources, targets, source_timestamps, source_vocabs, target_vocabs,
                                                  max_seq_len_source, max_seq_len_target)
 
     if not allow_empty:
@@ -953,8 +978,11 @@ def get_training_data_iters(sources: List[str],
     buckets = define_parallel_buckets(max_seq_len_source, max_seq_len_target, bucket_width, bucket_scaling,
                                       length_statistics.length_ratio_mean) if bucketing else [(max_seq_len_source,
                                                                                                max_seq_len_target)]
+    if len(source_timestamps) > 0 :
+        sources_sentences, targets_sentences = create_sequence_readers_time(sources, targets, source_timestamps, source_vocabs, target_vocabs)
 
-    sources_sentences, targets_sentences = create_sequence_readers(sources, targets, source_vocabs, target_vocabs)
+    else:
+        sources_sentences, targets_sentences = create_sequence_readers(sources, targets, source_vocabs, target_vocabs)
 
     # Pass 2: Get data statistics and determine the number of data points for each bucket.
     data_statistics = get_data_statistics(sources_sentences, targets_sentences, buckets,
@@ -973,8 +1001,7 @@ def get_training_data_iters(sources: List[str],
     # Pass 3: Load the data into memory and return the iterator.
     data_loader = RawParallelDatasetLoader(buckets=buckets,
                                            eos_id=C.EOS_ID,
-                                           pad_id=C.PAD_ID,
-                                           sep_id=C.SEP_ID)
+                                           pad_id=C.PAD_ID)
 
     training_data = data_loader.load(sources_sentences, targets_sentences,
                                      data_statistics.num_sents_per_bucket).fill_up(bucket_batch_sizes)
@@ -1003,6 +1030,7 @@ def get_training_data_iters(sources: List[str],
     validation_iter = get_validation_data_iter(data_loader=data_loader,
                                                validation_sources=validation_sources,
                                                validation_targets=validation_targets,
+                                               validation_source_timestamps=validation_source_timestamps,
                                                buckets=buckets,
                                                bucket_batch_sizes=bucket_batch_sizes,
                                                source_vocabs=source_vocabs,
@@ -1018,6 +1046,7 @@ def get_scoring_data_iters(sources: List[str],
                            targets: List[str],
                            source_vocabs: List[vocab.Vocab],
                            target_vocabs: List[vocab.Vocab],
+                           source_timestamps: List[str],
                            batch_size: int,
                            max_seq_len_source: int,
                            max_seq_len_target: int) -> 'BaseParallelSampleIter':
@@ -1046,13 +1075,13 @@ def get_scoring_data_iters(sources: List[str],
     data_loader = RawParallelDatasetLoader(buckets=[bucket],
                                            eos_id=C.EOS_ID,
                                            pad_id=C.PAD_ID,
-                                           sep_id=C.SEP_ID,
                                            skip_blanks=False)
 
     # ...one iterator to traverse them all,
     scoring_iter = BatchedRawParallelSampleIter(data_loader=data_loader,
                                                 sources=sources,
                                                 targets=targets,
+                                                source_timestamps=source_timestamps,
                                                 source_vocabs=source_vocabs,
                                                 target_vocabs=target_vocabs,
                                                 bucket=bucket,
@@ -1202,6 +1231,24 @@ def read_content(path: str, limit: Optional[int] = None) -> Iterator[List[str]]:
                 break
             yield list(get_tokens(line))
 
+def read_content_time(tokens: str, timestamps: str, limit: Optional[int] = None) -> Iterator[List[str]]:
+    """
+    Returns a list of tokens for each line in path up to a limit.
+
+    :param path: Path to files containing sentences.
+    :param limit: How many lines to read from path.
+    :return: Iterator over lists of words.
+    """
+    if len(timestamps) > 0 :
+        with smart_open(tokens) as tokens:
+            with smart_open(timestamps[0]) as timestamps:
+                for i, line in enumerate(tokens):
+                    if limit is not None and i == limit:
+                        break
+                    yield get_tokens(line), get_timestamps(line)
+    else:
+        read_content(tokens, limit)
+
 
 def tokens2ids(tokens: Iterable[str], vocab: Dict[str, int]) -> List[int]:
     """
@@ -1210,6 +1257,16 @@ def tokens2ids(tokens: Iterable[str], vocab: Dict[str, int]) -> List[int]:
     :param tokens: List of string tokens.
     :param vocab: Vocabulary (containing UNK symbol).
     :return: List of word ids.
+    """
+    return [vocab.get(w, vocab[C.UNK_SYMBOL]) for w in tokens]
+
+def tokens_frames2ids(tokens: Iterable[str], vocab: Dict[str, int]) -> List[int]:
+    """
+    Returns sequence of integer ids given a sequence of tokens and vocab.
+
+    :param tokens: List of string tokens.
+    :param vocab: Vocabulary (containing UNK symbol).
+    :return: List of word ids and frames.
     """
     return [vocab.get(w, vocab[C.UNK_SYMBOL]) for w in tokens]
 
@@ -1223,6 +1280,15 @@ def strids2ids(tokens: Iterable[str]) -> List[int]:
     """
     return list(map(int, tokens))
 
+def frames2ids(tokens: Iterable[str], frames: Iterable[str]) -> List[int]:
+    """
+    Returns sequence of integer ids given a sequence of string ids and a sequence of frame ids.
+
+    :param tokens: List of integer tokens.
+    :param frames: List of timestamps given as number of frames
+    :return: List of word ids.
+    """
+    return list(map(int, tokens, frames))
 
 def ids2strids(ids: Iterable[int]) -> str:
     """
@@ -1264,40 +1330,58 @@ class SequenceReader:
 
     def __init__(self,
                  path: str,
+                 timestamps: [str],
                  vocabulary: Optional[vocab.Vocab] = None,
                  add_bos: bool = False,
                  add_eos: bool = False,
                  limit: Optional[int] = None) -> None:
         self.path = path
+        self.timestamps = timestamps
         self.vocab = vocabulary
         self.bos_id = None
         self.eos_id = None
-        self.sep_id = None
+        breakpoint()
         if vocabulary is not None:
             assert vocab.is_valid_vocab(vocabulary)
             self.bos_id = C.BOS_ID
             self.eos_id = C.EOS_ID
-            self.sep_id = C.SEP_ID
         else:
             check_condition(not add_bos and not add_eos, "Adding a BOS or EOS symbol requires a vocabulary")
         self.add_bos = add_bos
         self.add_eos = add_eos
         self.limit = limit
 
+    breakpoint()
     def __iter__(self):
-        for tokens in read_content(self.path, self.limit):
-            if self.vocab is not None:
-                sequence = tokens2ids(tokens, self.vocab)
-            else:
-                sequence = strids2ids(tokens)
-            if len(sequence) == 0:
-                yield None
-                continue
-            if self.add_bos:
-                sequence.insert(0, self.bos_id)
-            if self.add_eos:
-                sequence.append(self.eos_id)
-            yield sequence
+        if len(self.timestamps) > 0 :
+            for tokens in read_content_time(self.path, self.timestamps, self.limit):
+                if self.vocab is not None:
+                    sequence = tokens_frames2ids(tokens, self.vocab)
+                else:
+                    sequence = frames2ids(tokens, self.vocab)
+                if len(sequence) == 0:
+                    yield None
+                    continue
+                if self.add_bos:
+                    sequence.insert(0, self.bos_id)
+                if self.add_eos:
+                    sequence.append(self.eos_id)
+                yield sequence
+
+        else:
+            for tokens in read_content(self.path, self.limit):
+                if self.vocab is not None:
+                    sequence = tokens2ids(tokens, self.vocab)
+                else:
+                    sequence = strids2ids(tokens)
+                if len(sequence) == 0:
+                    yield None
+                    continue
+                if self.add_bos:
+                    sequence.insert(0, self.bos_id)
+                if self.add_eos:
+                    sequence.append(self.eos_id)
+                yield sequence
 
 
 def create_sequence_readers(sources: List[str], targets: List[str],
@@ -1312,9 +1396,37 @@ def create_sequence_readers(sources: List[str], targets: List[str],
     :param vocab_targets: The target vocabularies.
     :return: The source sequence readers and the target reader.
     """
+    source_sequence_readers = []
+
     source_sequence_readers = [SequenceReader(source, vocab, add_eos=True) for source, vocab in
-                               zip(sources, vocab_sources)]
+                                zip(sources, vocab_sources)]
+    breakpoint()
     target_sequence_readers = [SequenceReader(target, vocab, add_bos=True) for target, vocab in
+                               zip(targets, vocab_targets)]
+    return source_sequence_readers, target_sequence_readers
+
+def create_sequence_readers_time(sources: List[str], targets: List[str],
+                            source_timestamps: List[str],
+                            vocab_sources: List[vocab.Vocab],
+                            vocab_targets: List[vocab.Vocab]) -> Tuple[List[SequenceReader], List[SequenceReader]]:
+    """
+    Create source readers with timestamps and EOS, and target readers with BOS.
+
+    :param sources: The file names of source data and factors.
+    :param targets: The file name of the target data and factors.
+    :param timestamps_sources: The file name(s) of source timestamps.
+    :param vocab_sources: The source vocabularies.
+    :param vocab_targets: The target vocabularies.
+    :return: The source sequence readers and the target reader.
+    """
+    source_sequence_readers = []
+
+    source_sequence_readers = [SequenceReader(source, source_timestamps, vocab, add_eos=True) for source, vocab in
+                                zip(sources, vocab_sources)]
+    
+
+    target_timestamps = []
+    target_sequence_readers = [SequenceReader(target, target_timestamps, vocab, add_bos=True) for target, vocab in
                                zip(targets, vocab_targets)]
     return source_sequence_readers, target_sequence_readers
 
@@ -1665,6 +1777,7 @@ class BaseParallelSampleIter(mx.io.DataIter):
                  bucket_batch_sizes: List[BucketBatchSize],
                  num_source_factors: int = 1,
                  num_target_factors: int = 1,
+                 num_source_timestamps: int = 0,
                  permute: bool = True,
                  dtype='float32') -> None:
         super().__init__(batch_size=batch_size)
@@ -1709,6 +1822,7 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
                  data_loader: RawParallelDatasetLoader,
                  sources: List[str],
                  targets: List[str],
+                 source_timestamps: List[str],
                  source_vocabs: List[vocab.Vocab],
                  target_vocabs: List[vocab.Vocab],
                  bucket: Tuple[int, int],
@@ -1716,17 +1830,23 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
                  max_lens: Tuple[int, int],
                  num_source_factors: int = 1,
                  num_target_factors: int = 1,
+                 num_source_timestamps: int=0,
                  dtype='float32') -> None:
         super().__init__(buckets=[bucket],
                          batch_size=batch_size,
                          bucket_batch_sizes=[BucketBatchSize(bucket, batch_size, None)],
                          num_source_factors=num_source_factors,
                          num_target_factors=num_target_factors,
+                         num_source_timestamps=num_source_timestamps,
                          permute=False,
                          dtype=dtype)
         self.data_loader = data_loader
-        self.sources_sentences, self.targets_sentences = create_sequence_readers(sources, targets,
-                                                                                 source_vocabs, target_vocabs)
+        if len(source_timestamps) > 0 :
+            self.sources_sentences, self.targets_sentences = create_sequence_readers_time(sources, targets, source_timestamps,
+                                                                                       source_vocabs, target_vocabs)
+        else:
+            self.sources_sentences, self.targets_sentences = create_sequence_readers_time(sources, targets, source_timestamps,
+                                                                                       source_vocabs, target_vocabs)
         self.sources_iters = [iter(s) for s in self.sources_sentences]
         self.targets_iters = [iter(s) for s in self.targets_sentences]
         self.max_len_source, self.max_len_target = max_lens

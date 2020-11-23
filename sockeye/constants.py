@@ -76,6 +76,9 @@ FACTORS_COMBINE_CHOICES = [FACTORS_COMBINE_SUM,
                            FACTORS_COMBINE_AVERAGE,
                            FACTORS_COMBINE_CONCAT]
 
+# frame embeddings
+FRAME_EMBEDDINGS = False
+
 # encoder names (arguments)
 TRANSFORMER_TYPE = "transformer"
 

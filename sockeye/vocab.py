@@ -57,6 +57,7 @@ def build_raw_vocab(data: Iterable[str]) -> Counter:
 
     :param data: Sequence of sentences containing whitespace-delimited tokens.
     """
+    
     return Counter(token for line in data for token in utils.get_tokens(line))
 
 
@@ -95,7 +96,6 @@ def build_pruned_vocab(raw_vocab: Counter, num_words: Optional[int] = None, min_
     else:
         pad_entries = []
         pad_to_multiple_log = "None"
-
     word_to_id = {word: idx for idx, word in enumerate(chain(C.VOCAB_SYMBOLS, vocab, pad_entries))}
     logger.info("Vocabulary: types: %d/%d/%d/%d (initial/min_pruned/max_pruned/+special) " +
                 "[min_frequency=%d, max_num_types=%s, pad_to_multiple_of=%s]",
@@ -173,6 +173,8 @@ def is_valid_vocab(vocab: Vocab) -> bool:
     word_ids = []
     for word, word_id in vocab.items():
         word_ids.append(word_id)
+    breakpoint()
+
     word_ids_set = set(word_ids)
     if len(word_ids_set) != len(word_ids):
         logger.warning("Duplicate word_ids in vocabulary.")

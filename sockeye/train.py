@@ -304,11 +304,14 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
             prepared_data_dir=args.prepared_data,
             validation_sources=validation_sources,
             validation_targets=validation_targets,
+            validation_source_timestamps= args.validation_source_timestamps,
             shared_vocab=shared_vocab,
             batch_size=args.batch_size,
             batch_type=args.batch_type,
             batch_num_devices=batch_num_devices,
             batch_sentences_multiple_of=args.batch_sentences_multiple_of)
+        
+        breakpoint()
 
         check_condition(all([combine in [C.FACTORS_COMBINE_SUM, C.FACTORS_COMBINE_AVERAGE]
                              for combine in args.source_factors_combine])
@@ -405,8 +408,10 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
         train_iter, validation_iter, config_data, data_info = data_io.get_training_data_iters(
             sources=sources,
             targets=targets,
+            source_timestamps=args.source_frame_embeddings,
             validation_sources=validation_sources,
             validation_targets=validation_targets,
+            validation_source_timestamps=args.validation_source_frame_embeddings,
             source_vocabs=source_vocabs,
             target_vocabs=target_vocabs,
             source_vocab_paths=source_vocab_paths,
@@ -913,7 +918,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
     :param checkpoint_callback: An optional callback function (int -> None). The function will be called
 +                                each time a checkpoint has been reached
     """
-
+    breakpoint()
     if args.dry_run:
         # Modify arguments so that we write to a temporary directory and
         # perform 0 training iterations
@@ -926,6 +931,12 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
     if args.amp:
         using_amp = True
         amp.init()
+
+    # Enabling frame-embeddings
+    if args.source_frame_embeddings != []:
+        C.FRAME_EMBEDDINGS = True
+    else:
+        C.FRAME_EMBEDDINGS = False
 
     # When using Horovod, multiple workers (instances of sockeye.train) are
     # launched via MPI.  Each worker has a rank (unique among all workers in the
@@ -955,7 +966,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
             if args.quiet_secondary_workers:
                 args.quiet = True
             console_level = args.loglevel_secondary_workers
-
+    breakpoint()
     check_arg_compatibility(args)
     output_folder = os.path.abspath(args.output)
     resume_training = check_resume(args, output_folder)
@@ -988,7 +999,8 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
         logger.info("Training Device(s): %s", ", ".join(str(c) for c in context))
 
         utils.seed_rngs(args.seed, ctx=context)
-
+        
+        breakpoint()
         train_iter, eval_iter, config_data, source_vocabs, target_vocabs = create_data_iters_and_vocabs(
             args=args,
             max_seq_len_source=max_seq_len_source,
@@ -1017,16 +1029,18 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
                     '|'.join([str(size) for size in source_vocab_sizes]),
                     '|'.join([str(size) for size in target_vocab_sizes]))
 
+        breakpoint()
         model_config = create_model_config(args=args,
                                            source_vocab_sizes=source_vocab_sizes,
                                            target_vocab_sizes=target_vocab_sizes,
                                            max_seq_len_source=max_seq_len_source,
                                            max_seq_len_target=max_seq_len_target,
                                            config_data=config_data)
-
+        breakpoint()
         training_model = model.SockeyeModel(model_config)
 
         # Handle options that override training settings
+        breakpoint()
         trainer_config = training.TrainerConfig(
             output_dir=args.output,
             early_stopping_metric=args.optimized_metric,
@@ -1135,7 +1149,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
 
         cp_decoder = create_checkpoint_decoder(args, exit_stack, context,
                                                training_model, source_vocabs, target_vocabs, hybridize=hybridize)
-
+        breakpoint()
         training_state = trainer.fit(train_iter=train_iter, validation_iter=eval_iter, checkpoint_decoder=cp_decoder)
         return training_state
 
