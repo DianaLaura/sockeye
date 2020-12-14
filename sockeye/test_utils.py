@@ -78,7 +78,6 @@ def generate_digits_time_file(source_path: str,
     random_gen = random.Random(seed)
     with open(source_path, "w") as source_out, open(target_path, "w") as target_out, open(time_source_path, "w") as time_out:
         all_digits = []
-        time = 0
         for _ in range(line_count - line_count_empty):
             digits = [random_gen.choice(_DIGITS) for _ in range(random_gen.randint(1, line_length))]
             all_digits.append(digits)
@@ -86,9 +85,13 @@ def generate_digits_time_file(source_path: str,
             all_digits.append([])
         random_gen.shuffle(all_digits)
         for digits in all_digits:
+            timestamps = []
+            time = 0
+            while len(timestamps) < len(digits):
+                timestamps.append(time)
+                time += 1
             print(C.TOKEN_SEPARATOR.join(digits), file=source_out)
-            print(C.TOKEN_SEPARATOR + str(time), file=time_out)
-            time += 1
+            print(C.TOKEN_SEPARATOR + str(timestamps), file=time_out)
             if sort_target:
                 digits.sort()
             print(C.TOKEN_SEPARATOR.join(digits), file=target_out)

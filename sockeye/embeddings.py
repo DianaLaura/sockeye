@@ -26,6 +26,7 @@ from . import constants as C
 from . import model
 from . import utils
 from .data_io import tokens2ids
+from .data_io import tokens_frames2ids
 from .log import setup_main_logger
 from .utils import check_condition
 from .vocab import reverse_vocab

@@ -173,7 +173,7 @@ def is_valid_vocab(vocab: Vocab) -> bool:
     word_ids = []
     for word, word_id in vocab.items():
         word_ids.append(word_id)
-    breakpoint()
+  
 
     word_ids_set = set(word_ids)
     if len(word_ids_set) != len(word_ids):

@@ -24,7 +24,7 @@ from sockeye import constants as C
 from sockeye import data_io
 from sockeye import vocab
 from sockeye.utils import SockeyeError, get_tokens, seed_rngs
-from sockeye.test_utils import tmp_digits_dataset
+from sockeye.test_utils import tmp_digits_dataset, tmp_digits_timestamp_dataset
 
 seed_rngs(12)
 
@@ -91,10 +91,18 @@ def test_get_bucket(buckets, length, expected_bucket):
 tokens2ids_tests = [(["a", "b", "c"], {"a": 1, "b": 0, "c": 300, C.UNK_SYMBOL: 12}, [1, 0, 300]),
                     (["a", "x", "c"], {"a": 1, "b": 0, "c": 300, C.UNK_SYMBOL: 12}, [1, 12, 300])]
 
+tokens_frames2ids_tests = [([["a",1], ["b",3], ["c",5]], {"a": 1, "b": 0, "c": 300, C.UNK_SYMBOL: 12}, [1, 0, 300]),
+                ([["a",1], ["x",2], ["c",6]], {"a": 1, "b": 0, "c": 300, C.UNK_SYMBOL: 12}, [1, 12, 300])]
 
 @pytest.mark.parametrize("tokens, vocab, expected_ids", tokens2ids_tests)
 def test_tokens2ids(tokens, vocab, expected_ids):
     ids = data_io.tokens2ids(tokens, vocab)
+    assert ids == expected_ids
+
+@pytest.mark.parametrize("tokens, vocab, expected_ids", tokens_frames2ids_tests)
+def test_tokens_frames2ids(tokens, vocab, expected_ids):
+    ids = data_io.tokens_frames2ids(tokens, vocab)
+    print(ids)
     assert ids == expected_ids
 
 
@@ -126,14 +134,14 @@ def test_sequence_reader(sequences, use_vocab, add_bos, add_eos):
 
         vocabulary = vocab.build_vocab(sequences) if use_vocab else None
 
-        reader = data_io.SequenceReader(path, vocabulary=vocabulary, add_bos=add_bos, add_eos=add_eos)
+        reader = data_io.SequenceReader(path, vocabulary=vocabulary, timestamps=[], add_bos=add_bos, add_eos=add_eos)
 
         read_sequences = [s for s in reader]
         assert len(read_sequences) == len(sequences)
 
         if vocabulary is None:
             with pytest.raises(SockeyeError) as e:
-                data_io.SequenceReader(path, vocabulary=vocabulary, add_bos=True)
+                data_io.SequenceReader(path, vocabulary=vocabulary, timestamps=[], add_bos=True)
             assert str(e.value) == "Adding a BOS or EOS symbol requires a vocabulary"
 
             expected_sequences = [data_io.strids2ids(get_tokens(s)) if s else None for s in sequences]
@@ -496,7 +504,7 @@ def test_non_parallel_calculate_length_statistics(sources, targets):
         data_io.calculate_length_statistics(sources, targets, 5, 5)
 
 
-def test_get_training_data_iters():
+def test_get_training_data_iters_without_timestamps():
     train_line_count = 100
     train_line_count_empty = 0
     train_max_length = 30
@@ -516,12 +524,97 @@ def test_get_training_data_iters():
                             test_max_length - C.SPACE_FOR_XOS) as data:
         # tmp common vocab
         vcb = vocab.build_from_paths([data['train_source'], data['train_target']])
+        breakpoint()
+        train_iter, val_iter, config_data, data_info = data_io.get_training_data_iters(
+            sources=[data['train_source']],
+            targets=[data['train_target']],
+            source_timestamps=[],
+            validation_sources=[data['dev_source']],
+            validation_targets=[data['dev_target']],
+            validation_source_timestamps=[],
+            source_vocabs=[vcb],
+            target_vocabs=[vcb],
+            source_vocab_paths=[None],
+            target_vocab_paths=[None],
+            shared_vocab=True,
+            batch_size=batch_size,
+            batch_type=C.BATCH_TYPE_SENTENCE,
+            batch_num_devices=1,
+            max_seq_len_source=train_max_length,
+            max_seq_len_target=train_max_length,
+            bucketing=True,
+            bucket_width=10)
+        assert isinstance(train_iter, data_io.ParallelSampleIter)
+        assert isinstance(val_iter, data_io.ParallelSampleIter)
+        assert isinstance(config_data, data_io.DataConfig)
+        assert data_info.sources == [data['train_source']]
+        assert data_info.targets == [data['train_target']]
+        assert data_info.source_vocabs == [None]
+        assert data_info.target_vocabs == [None]
+        assert config_data.data_statistics.max_observed_len_source == train_max_length
+        assert config_data.data_statistics.max_observed_len_target == train_max_length
+        assert np.isclose(config_data.data_statistics.length_ratio_mean, expected_mean)
+        assert np.isclose(config_data.data_statistics.length_ratio_std, expected_std)
+
+        assert train_iter.batch_size == batch_size
+        assert val_iter.batch_size == batch_size
+        assert train_iter.default_bucket_key == (train_max_length, train_max_length)
+        assert val_iter.default_bucket_key == (dev_max_length, dev_max_length)
+        assert train_iter.dtype == 'float32'
+
+        # test some batches
+        bos_id = vcb[C.BOS_SYMBOL]
+        eos_id = vcb[C.EOS_SYMBOL]
+        expected_first_target_symbols = np.full((batch_size, 1), bos_id, dtype='float32')
+        for epoch in range(2):
+            while train_iter.iter_next():
+                batch = train_iter.next()
+                assert isinstance(batch, data_io.Batch)
+                source = batch.source.asnumpy()
+                target = batch.target.asnumpy()
+                label = batch.labels[C.TARGET_LABEL_NAME].asnumpy()  # TODO: still 2-shape: (batch, length)
+                length_ratio_label = batch.labels[C.LENRATIO_LABEL_NAME].asnumpy()
+                assert source.shape[0] == target.shape[0] == label.shape[0] == batch_size
+                assert source.shape[2] == target.shape[2] == num_source_factors == num_target_factors
+                # target first symbol should be BOS
+                # each source sequence contains one EOS symbol
+                assert np.sum(source == eos_id) == batch_size
+                assert np.array_equal(target[:, 0], expected_first_target_symbols)
+                # label first symbol should be 2nd target symbol
+                assert np.array_equal(label[:, 0], target[:, 1, 0])
+                # each label sequence contains one EOS symbol
+                assert np.sum(label == eos_id) == batch_size
+            train_iter.reset()
+
+def test_get_training_data_iters_with_timestamps():
+    train_line_count = 100
+    train_line_count_empty = 0
+    train_max_length = 30
+    dev_line_count = 20
+    dev_max_length = 30
+    expected_mean = 1.0
+    expected_std = 0.0
+    test_line_count = 20
+    test_line_count_empty = 0
+    test_max_length = 30
+    batch_size = 5
+    num_source_factors = num_target_factors = 1
+    with tmp_digits_timestamp_dataset("tmp_corpus",
+                            train_line_count, train_line_count_empty, train_max_length - C.SPACE_FOR_XOS,
+                            dev_line_count, dev_max_length - C.SPACE_FOR_XOS,
+                            test_line_count, test_line_count_empty,
+                            test_max_length - C.SPACE_FOR_XOS) as data:
+        # tmp common vocab
+        vcb = vocab.build_from_paths([data['train_source'], data['train_target']])
+
 
         train_iter, val_iter, config_data, data_info = data_io.get_training_data_iters(
             sources=[data['train_source']],
             targets=[data['train_target']],
+            source_timestamps=[data['train_source_timestamps']],
             validation_sources=[data['dev_source']],
             validation_targets=[data['dev_target']],
+            validation_source_timestamps=[data['dev_source_timestamps']],
             source_vocabs=[vcb],
             target_vocabs=[vcb],
             source_vocab_paths=[None],

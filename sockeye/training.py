@@ -326,6 +326,7 @@ class GluonEarlyStoppingTrainer:
 
         # send sharded inputs to the backend
         for inputs, labels in batch.shards():
+
             self._parallel.put((inputs, labels))
 
         # get outputs from parallel requests to the backend. Each shard output contains a list of tuples, one for each
@@ -736,6 +737,7 @@ class ParallelModel(parallel.Parallelizable):
         Applies forward-backward pass for a single shard of a batch (data-parallel training).
         """
         inputs, labels = shard
+    
         with mx.autograd.record():
             outputs = self.model(*inputs)  # type: Dict[str, mx.nd.NDArray]
             loss_outputs = [loss_function(outputs, labels) for loss_function in self.loss_functions]

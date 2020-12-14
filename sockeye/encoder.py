@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Union
 
 import mxnet as mx
+import numpy as np
 
 from . import config
 from . import constants as C
@@ -58,7 +59,7 @@ class Encoder(ABC, mx.gluon.HybridBlock):
     def __init__(self, **kwargs):
         mx.gluon.HybridBlock.__init__(self, **kwargs)
 
-    def forward(self, inputs, valid_length):  # pylint: disable=arguments-differ
+    def forward(self, inputs, valid_length):  # pylint: disable=arguments-differ 
         return mx.gluon.HybridBlock.forward(self, inputs, valid_length)
 
     def __call__(self, inputs, valid_length):  #pylint: disable=arguments-differ
@@ -110,12 +111,15 @@ class EmbeddingConfig(config.Config):
     def __init__(self,
                  vocab_size: int,
                  num_embed: int,
+                 embedding_type: str,
                  dropout: float,
                  factor_configs: Optional[List[FactorConfig]] = None,
                  allow_sparse_grad: bool = False) -> None:
         super().__init__()
+
         self.vocab_size = vocab_size
         self.num_embed = num_embed
+        self.embedding_type = embedding_type
         self.dropout = dropout
         self.factor_configs = factor_configs
         self.num_factors = 1
@@ -164,10 +168,12 @@ class Embedding(Encoder):
                     setattr(self, factor_weight_name, factor_weight)
 
     def hybrid_forward(self, F, data, valid_length, embed_weight, **kwargs):  # pylint: disable=arguments-differ
+
         # We will catch the optional factor weights in kwargs
         average_factors_embeds = []  # type: List[Union[mx.sym.Symbol, mx.nd.ndarray]]
         concat_factors_embeds = []  # type: List[Union[mx.sym.Symbol, mx.nd.ndarray]]
         sum_factors_embeds = []  # type: List[Union[mx.sym.Symbol, mx.nd.ndarray]]
+
         if self.config.num_factors > 1 and self.config.factor_configs is not None:
             data, *data_factors = F.split(data=data,
                                           num_outputs=self.config.num_factors,
@@ -188,15 +194,53 @@ class Embedding(Encoder):
                     average_factors_embeds.append(factor_embedding)
                 else:
                     raise ValueError("Unknown combine value for factors: %s" % factor_config.combine)
-        else:
-            data = F.squeeze(data, axis=2)
 
-        embed = F.Embedding(data,
+            embed = F.Embedding(data,
                             weight=embed_weight,
                             input_dim=self.config.vocab_size,
                             output_dim=self.config.num_embed,
                             dtype=self._dtype,
                             sparse_grad=self._use_sparse_grad)
+
+        elif self.config.embedding_type == 'frames_source' and self.prefix == 'source_frames_embed_':
+            
+            tokens, frames = F.split(data, num_outputs = 2, axis = 2)
+
+            frames = frames.squeeze(axis=2)
+            frames = frames.squeeze(axis=2)
+            tokens = tokens.squeeze(axis=2)
+            tokens = tokens.squeeze(axis=2)
+         
+            weights = embed_weight.take(frames)
+   
+            weights = weights.reshape(shape=(-3, 0))
+
+            #Padding the new weights array such that its shape is (self.config.vocab_size, self.config.num_embed)
+
+            padding = F.zeros((self.config.vocab_size, self.config.num_embed))
+
+            padded_weights = F.concat(weights, padding, dim=0)
+
+            padded_weights = F.slice(padded_weights, begin=(0,0), end=(self.config.vocab_size, self.config.num_embed))
+
+
+            embed = F.Embedding(tokens,
+                    weight=padded_weights,
+                    input_dim=self.config.vocab_size,
+                    output_dim=self.config.num_embed,
+                    dtype=self._dtype,
+                    sparse_grad=self._use_sparse_grad)
+                        
+
+        else:
+            data = F.squeeze(data, axis=2)
+
+            embed = F.Embedding(data,
+                                weight=embed_weight,
+                                input_dim=self.config.vocab_size,
+                                output_dim=self.config.num_embed,
+                                dtype=self._dtype,
+                                sparse_grad=self._use_sparse_grad)
 
         if self.config.num_factors > 1 and self.config.factor_configs is not None:
             if average_factors_embeds:
@@ -299,12 +343,21 @@ class TransformerEncoder(Encoder, mx.gluon.HybridBlock):
         self.config = config
 
         with self.name_scope():
-            self.pos_embedding = layers.PositionalEmbeddings(weight_type=self.config.positional_embedding_type,
+
+            if config.positional_embedding_type == 'frames_source':
+                self.pos_embedding = layers.FrameEmbeddings(weight_type=self.config.positional_embedding_type,
                                                              num_embed=self.config.model_size,
                                                              max_seq_len=self.config.max_seq_len_source,
-                                                             prefix=C.SOURCE_POSITIONAL_EMBEDDING_PREFIX,
+                                                             prefix=C.SOURCE_FRAME_EMBEDDING_PREFIX,
                                                              scale_up_input=True,
                                                              scale_down_positions=False)
+            else:
+                self.pos_embedding = layers.PositionalEmbeddings(weight_type=self.config.positional_embedding_type,
+                                                                num_embed=self.config.model_size,
+                                                                max_seq_len=self.config.max_seq_len_source,
+                                                                prefix=C.SOURCE_POSITIONAL_EMBEDDING_PREFIX,
+                                                                scale_up_input=True,
+                                                                scale_down_positions=False)
 
             self.layers = mx.gluon.nn.HybridSequential()
             for i in range(config.num_layers):
@@ -316,6 +369,7 @@ class TransformerEncoder(Encoder, mx.gluon.HybridBlock):
                                                                      num_hidden=self.config.model_size)
 
     def hybrid_forward(self, F, data, valid_length):
+        breakpoint()
         # positional embedding
         data = self.pos_embedding(data, None)
 

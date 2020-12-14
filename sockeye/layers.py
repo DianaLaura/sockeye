@@ -656,9 +656,8 @@ class PositionalEmbeddings(mx.gluon.HybridBlock):
         self.max_seq_len = max_seq_len
         self.scale_up_input = scale_up_input
         self.scale_down_positions = scale_down_positions
-
         with self.name_scope():
-            if self.weight_type == C.FIXED_POSITIONAL_EMBEDDING:
+            if self.weight_type == C.FIXED_POSITIONAL_EMBEDDING or C.FRAME_EMBEDDING_SOURCE:
                 pos_weight = get_positional_embeddings(length=self.max_seq_len, depth=self.num_embed)
                 if self.scale_down_positions:
                     pos_weight *= self.num_embed ** -0.5
@@ -692,6 +691,113 @@ class PositionalEmbeddings(mx.gluon.HybridBlock):
             data = data * (self.num_embed ** 0.5)
 
         return F.broadcast_add(data, pos_embedding)
+
+def get_frame_embeddings(length, depth) -> np.ndarray:
+    utils.check_condition(depth % 2 == 0, "Positional embeddings require an even embedding size it "
+                                          "is however %d." % depth)
+    # (1, depth)
+    channels = np.arange(depth // 2).reshape((1, -1))
+
+    # (length, 1)
+    positions = np.arange(0, length).reshape((-1, 1))
+    scaled_positions = positions / np.power(10000, (2 * channels) / depth)
+    # sinusoids:
+    sin = np.sin(scaled_positions)
+    # cosines:
+    cos = np.cos(scaled_positions)
+    # interleave: (length, num_embed)
+    encodings = np.hstack([sin, cos])
+    return encodings
+
+class FrameEmbeddings(mx.gluon.HybridBlock):
+    """
+    Takes an encoded sequence with timestamps, and adds sinusoidal encoded embeddings similar to Vaswani et al. 2017, 
+    but uses the timestamp instead of the position.
+
+    :param weight_type: type of embeddings, fixed or learned.
+    :param num_embed: Embedding size.
+    :param max_seq_len: Maximum sequence length.
+    :param prefix: Name prefix for symbols of this encoder.
+    :param scale_up_input: If True, scales input data up by num_embed ** 0.5.
+    :param scale_down_positions: If True, scales positional embeddings down by num_embed ** -0.5.
+    :param weight_init: Optional initializer for learned embeddings.
+    """
+
+    def __init__(self,
+                 weight_type: str,
+                 num_embed: int,
+                 max_seq_len: int,
+                 prefix: str,
+                 scale_up_input: bool,
+                 scale_down_positions: bool,
+                 weight_init: Optional[Union[str, mx.init.Initializer]] = None) -> None:
+        utils.check_condition(num_embed % 2 == 0, "Positional embeddings require an even embedding size it "
+                                                  "is however %d." % num_embed)
+
+        super().__init__(prefix=prefix)
+        self.weight_type = weight_type
+        self.num_embed = num_embed
+        self.max_seq_len = max_seq_len
+        self.scale_up_input = scale_up_input
+        self.scale_down_positions = scale_down_positions
+
+        with self.name_scope():
+
+            pos_weight = get_frame_embeddings(length=self.max_seq_len, depth=self.num_embed)
+
+            if self.scale_down_positions:
+                pos_weight *= self.num_embed ** -0.5
+            self.weight = self.params.get_constant('weight', pos_weight)
+           
+            
+    def hybrid_forward(self, F, data, steps, weight):  # pylint: disable=arguments-differ
+        """
+        Applies frame embeddings to input data.
+
+        :param data: Input data. Shape: (batch, length or 1, num_embed)
+        :param steps: Optional steps input. If given, shape is (batch_size or 1, seq_len,)
+        :param weight: Positional embedding constant.
+        :return: Data with positional embeddings added
+        """
+
+        # (length, num_embed)
+        if steps is None:
+            # (batch, length, num_embed)
+            frame_embedding = F.slice_like(F.expand_dims(weight, axis=0), data, axes=(1,))
+
+        else:
+            # (batch_size or 1, seq_len, num_embed)
+            tokens, frames = F.split(data, num_outputs = 2, axis = 2)
+
+            frames = frames.squeeze(axis=2)
+            frames = frames.squeeze(axis=2)
+            tokens = tokens.squeeze(axis=2)
+            tokens = tokens.squeeze(axis=2)
+         
+            new_weights = weight.take(frames)
+   
+            new_weights = new_weights.reshape(shape=(-3, 0))
+
+            #Padding the new weights array such that its shape is (self.config.vocab_size, self.config.num_embed)
+
+            padding = F.zeros((self.max_seq_len, self.num_embed))
+
+            padded_weights = F.concat(new_weights, padding, dim=0)
+
+            padded_weights = F.slice(padded_weights, begin=(0,0), end=(self.max_seq_len, self.num_embed))
+
+         
+            frame_embedding = F.Embedding(steps, padded_weights, self.max_seq_len, self.num_embed)
+
+        
+        frame_embedding = F.BlockGrad(frame_embedding)
+
+        if self.scale_up_input:
+            data = data * (self.num_embed ** 0.5)
+
+        return F.broadcast_add(data, frame_embedding)
+
+
 
 
 class SSRU(AutoregressiveLayer):

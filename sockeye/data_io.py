@@ -34,7 +34,7 @@ from . import config
 from . import constants as C
 from . import horovod_mpi
 from . import vocab
-from .utils import check_condition, smart_open, get_tokens, get_timestamps, OnlineMeanAndVariance
+from .utils import check_condition, smart_open, get_tokens, get_tokens_with_timestamps, OnlineMeanAndVariance
 
 logger = logging.getLogger(__name__)
 
@@ -278,9 +278,9 @@ def analyze_sequence_lengths(sources: List[str],
                              vocab_targets: List[vocab.Vocab],
                              max_seq_len_source: int,
                              max_seq_len_target: int) -> 'LengthStatistics':
-    breakpoint()
+
     if len(source_timestamps) > 0 :
-        train_sources_sentences, train_targets_sentences = create_sequence_readers_time(sources, source_timestamps, targets,
+        train_sources_sentences, train_targets_sentences = create_sequence_readers_time(sources, targets,source_timestamps,
                                                                                 vocab_sources, vocab_targets)
     else:
         train_sources_sentences, train_targets_sentences = create_sequence_readers(sources, targets,
@@ -294,6 +294,7 @@ def analyze_sequence_lengths(sources: List[str],
     logger.info("Mean training target/source length ratio: %.2f (+-%.2f)",
                 length_statistics.length_ratio_mean,
                 length_statistics.length_ratio_std)
+    #breakpoint()
     return length_statistics
 
 
@@ -519,15 +520,20 @@ class RawParallelDatasetLoader:
         self.skip_blanks = skip_blanks
         self.dtype = dtype
         self.shift_target_factors = shift_target_factors
+    
+
 
     def load(self,
              source_iterables: Sequence[Iterable],
              target_iterables: Sequence[Iterable],
              num_samples_per_bucket: List[int]) -> 'ParallelDataSet':
 
+        
         assert len(num_samples_per_bucket) == len(self.buckets)
         num_source_factors = len(source_iterables)
         num_target_factors = len(target_iterables)
+
+
 
         data_source = [np.full((num_samples, source_len, num_source_factors), self.pad_id, dtype=self.dtype)
                        for (source_len, target_len), num_samples in zip(self.buckets, num_samples_per_bucket)]
@@ -543,19 +549,22 @@ class RawParallelDatasetLoader:
         num_pad_target = 0
 
         # Bucket sentences as padded np arrays
-        for sentno, (sources, targets) in enumerate(parallel_iter(source_iterables,
+        if source_iterables[0].timestamps != []:
+            for sentno, (sources, targets) in enumerate(parallel_iter(source_iterables,
                                                                   target_iterables, skip_blanks=self.skip_blanks), 1):
-            sources = [[] if stream is None else stream for stream in sources]
-            targets = [[] if stream is None else stream for stream in targets]
-            source_len = len(sources[0])
-            target_len = len(targets[0])
-            buck_index, buck = get_parallel_bucket(self.buckets, source_len, target_len)
-            if buck is None:
-                if self.skip_blanks:
-                    continue  # skip this sentence pair
-                else:
-                    buck_index = len(self.buckets)
-                    buck = self.buckets[buck_index]
+            
+                #sources = list(zip(*source_iterables))
+                sources = [[[]] if stream is None else stream for stream in sources]
+                targets = [[] if stream is None else stream for stream in targets]
+                source_len = len(sources[0])
+                target_len = len(targets[0])
+                buck_index, buck = get_parallel_bucket(self.buckets, source_len, target_len)
+                if buck is None:
+                    if self.skip_blanks:
+                        continue  # skip this sentence pair
+                    else:
+                        buck_index = len(self.buckets)
+                        buck = self.buckets[buck_index]
 
             num_tokens_source += buck[0]
             num_tokens_target += buck[1]
@@ -563,8 +572,14 @@ class RawParallelDatasetLoader:
             num_pad_target += buck[1] - target_len
 
             sample_index = bucket_sample_index[buck_index]
+
+        
             for i, s in enumerate(sources):
-                data_source[buck_index][sample_index, 0:source_len, i] = s
+
+                s = np.array(s)
+                s = s.reshape(1,len(s),2,1)
+                data_source[buck_index] = s
+            
             for i, t in enumerate(targets):
                 if i == 0 or not self.shift_target_factors:
                     # sequence: <BOS> ... <EOS>
@@ -577,14 +592,65 @@ class RawParallelDatasetLoader:
 
             bucket_sample_index[buck_index] += 1
 
-        for i in range(len(data_source)):
-            data_source[i] = mx.nd.from_numpy(data_source[i], zero_copy=True)
-            data_target[i] = mx.nd.from_numpy(data_target[i], zero_copy=True)
+            for i in range(len(data_source)):
+                if data_source[i].ndim == 3:
+                    shapes = data_source[i].shape
+                    zeros = np.zeros((shapes[0],shapes[1],shapes[2]))
+                    data_source[i] = np.hstack((data_source[i], zeros))
+                    data_source[i] = data_source[i].reshape(shapes[0], shapes[1], 2, 1)
+                data_source[i] = mx.nd.from_numpy(data_source[i], zero_copy=True)
+                data_target[i] = mx.nd.from_numpy(data_target[i], zero_copy=True)
 
-        if num_tokens_source > 0 and num_tokens_target > 0:
-            logger.info("Created bucketed parallel data set. Introduced padding: source=%.1f%% target=%.1f%%)",
-                        num_pad_source / num_tokens_source * 100,
-                        num_pad_target / num_tokens_target * 100)
+            if num_tokens_source > 0 and num_tokens_target > 0:
+                logger.info("Created bucketed parallel data set. Introduced padding: source=%.1f%% target=%.1f%%)",
+                            num_pad_source / num_tokens_source * 100,
+                            num_pad_target / num_tokens_target * 100)
+
+        else:
+
+            for sentno, (sources, targets) in enumerate(parallel_iter(source_iterables,
+                                                                    target_iterables, skip_blanks=self.skip_blanks), 1):
+                sources = [[] if stream is None else stream for stream in sources]
+                targets = [[] if stream is None else stream for stream in targets]
+                source_len = len(sources[0])
+                target_len = len(targets[0])
+                buck_index, buck = get_parallel_bucket(self.buckets, source_len, target_len)
+                if buck is None:
+                    if self.skip_blanks:
+                        continue  # skip this sentence pair
+                    else:
+                        buck_index = len(self.buckets)
+                        buck = self.buckets[buck_index]
+
+            num_tokens_source += buck[0]
+            num_tokens_target += buck[1]
+            num_pad_source += buck[0] - source_len
+            num_pad_target += buck[1] - target_len
+
+            sample_index = bucket_sample_index[buck_index]
+            for i, s in enumerate(sources):
+                data_source[buck_index][sample_index, 0:source_len, i] = s
+
+            for i, t in enumerate(targets):
+                if i == 0 or not self.shift_target_factors:
+                    # sequence: <BOS> ... <EOS>
+                    t.append(self.eos_id)
+                    data_target[buck_index][sample_index, 0:target_len + 1, i] = t
+                else:
+                    # sequence: <BOS> <BOS> ...
+                    t.insert(0, C.BOS_ID)
+                    data_target[buck_index][sample_index, 0:target_len + 1, i] = t
+
+            bucket_sample_index[buck_index] += 1
+
+            for i in range(len(data_source)):
+                data_source[i] = mx.nd.from_numpy(data_source[i], zero_copy=True)
+                data_target[i] = mx.nd.from_numpy(data_target[i], zero_copy=True)
+
+            if num_tokens_source > 0 and num_tokens_target > 0:
+                logger.info("Created bucketed parallel data set. Introduced padding: source=%.1f%% target=%.1f%%)",
+                            num_pad_source / num_tokens_source * 100,
+                            num_pad_target / num_tokens_target * 100)
 
         return ParallelDataSet(data_source, data_target)
 
@@ -964,7 +1030,9 @@ def get_training_data_iters(sources: List[str],
     logger.info("===============================")
     logger.info("Creating training data iterator")
     logger.info("===============================")
-    breakpoint()
+    if source_timestamps != []:
+        sources.append(source_timestamps)
+
     # Pass 1: get target/source length ratios.
     length_statistics = analyze_sequence_lengths(sources, targets, source_timestamps, source_vocabs, target_vocabs,
                                                  max_seq_len_source, max_seq_len_target)
@@ -974,7 +1042,8 @@ def get_training_data_iters(sources: List[str],
                         "No training sequences found with length smaller or equal than the maximum sequence length."
                         "Consider increasing %s" % C.TRAINING_ARG_MAX_SEQ_LEN)
 
-    # define buckets
+
+
     buckets = define_parallel_buckets(max_seq_len_source, max_seq_len_target, bucket_width, bucket_scaling,
                                       length_statistics.length_ratio_mean) if bucketing else [(max_seq_len_source,
                                                                                                max_seq_len_target)]
@@ -985,6 +1054,7 @@ def get_training_data_iters(sources: List[str],
         sources_sentences, targets_sentences = create_sequence_readers(sources, targets, source_vocabs, target_vocabs)
 
     # Pass 2: Get data statistics and determine the number of data points for each bucket.
+
     data_statistics = get_data_statistics(sources_sentences, targets_sentences, buckets,
                                           length_statistics.length_ratio_mean, length_statistics.length_ratio_std,
                                           source_vocabs, target_vocabs)
@@ -999,6 +1069,7 @@ def get_training_data_iters(sources: List[str],
     data_statistics.log(bucket_batch_sizes)
 
     # Pass 3: Load the data into memory and return the iterator.
+
     data_loader = RawParallelDatasetLoader(buckets=buckets,
                                            eos_id=C.EOS_ID,
                                            pad_id=C.PAD_ID)
@@ -1238,14 +1309,19 @@ def read_content_time(tokens: str, timestamps: str, limit: Optional[int] = None)
     :param path: Path to files containing sentences.
     :param limit: How many lines to read from path.
     :return: Iterator over lists of words.
+
     """
+
     if len(timestamps) > 0 :
         with smart_open(tokens) as tokens:
-            with smart_open(timestamps[0]) as timestamps:
-                for i, line in enumerate(tokens):
+            with smart_open(timestamps) as timestamps:
+                i = 0
+                for token,time in zip(enumerate(tokens), enumerate(timestamps)):
                     if limit is not None and i == limit:
                         break
-                    yield get_tokens(line), get_timestamps(line)
+                    i += 1
+                    yield get_tokens_with_timestamps(zip(token, time))
+                
     else:
         read_content(tokens, limit)
 
@@ -1260,15 +1336,20 @@ def tokens2ids(tokens: Iterable[str], vocab: Dict[str, int]) -> List[int]:
     """
     return [vocab.get(w, vocab[C.UNK_SYMBOL]) for w in tokens]
 
-def tokens_frames2ids(tokens: Iterable[str], vocab: Dict[str, int]) -> List[int]:
+def tokens_frames2ids(tokens_frames: Iterable[str], vocab: Dict[str, int]) -> List[int]:
     """
-    Returns sequence of integer ids given a sequence of tokens and vocab.
+    Returns sequence of integer ids given a sequence of tokens, frames and vocab.
 
     :param tokens: List of string tokens.
     :param vocab: Vocabulary (containing UNK symbol).
-    :return: List of word ids and frames.
+    :return: List of word ids.
     """
-    return [vocab.get(w, vocab[C.UNK_SYMBOL]) for w in tokens]
+
+    unzipped_tokens_frames = list(zip(*tokens_frames))
+    tokens = unzipped_tokens_frames[0]
+    timestamps = unzipped_tokens_frames[1]
+
+    return [[vocab.get(tokens[w], vocab[C.UNK_SYMBOL]), int(timestamps[w])] for w in range (0, len(tokens))]
 
 
 def strids2ids(tokens: Iterable[str]) -> List[int]:
@@ -1315,6 +1396,7 @@ def ids2tokens(token_ids: Iterable[int],
     return (tok for token_id, tok in zip(token_ids, tokens) if token_id not in exclude_set)
 
 
+
 class SequenceReader:
     """
     Reads sequence samples from path and (optionally) creates integer id sequences.
@@ -1330,17 +1412,20 @@ class SequenceReader:
 
     def __init__(self,
                  path: str,
-                 timestamps: [str],
                  vocabulary: Optional[vocab.Vocab] = None,
+                 timestamps: Optional[str] = [],
                  add_bos: bool = False,
                  add_eos: bool = False,
                  limit: Optional[int] = None) -> None:
         self.path = path
-        self.timestamps = timestamps
+        try:
+            self.timestamps = timestamps[0]
+        except (IndexError, KeyError):
+            self.timestamps=[]
         self.vocab = vocabulary
         self.bos_id = None
         self.eos_id = None
-        breakpoint()
+
         if vocabulary is not None:
             assert vocab.is_valid_vocab(vocabulary)
             self.bos_id = C.BOS_ID
@@ -1351,21 +1436,21 @@ class SequenceReader:
         self.add_eos = add_eos
         self.limit = limit
 
-    breakpoint()
+
     def __iter__(self):
         if len(self.timestamps) > 0 :
-            for tokens in read_content_time(self.path, self.timestamps, self.limit):
+            for token in read_content_time(self.path, self.timestamps, self.limit):
                 if self.vocab is not None:
-                    sequence = tokens_frames2ids(tokens, self.vocab)
+                    sequence = tokens_frames2ids(token, self.vocab)
                 else:
-                    sequence = frames2ids(tokens, self.vocab)
+                    sequence = frames2ids(token, self.vocab)
                 if len(sequence) == 0:
                     yield None
                     continue
                 if self.add_bos:
-                    sequence.insert(0, self.bos_id)
+                    sequence.insert(0,[self.bos_id,-1])
                 if self.add_eos:
-                    sequence.append(self.eos_id)
+                    sequence.append([self.eos_id, 10_000])
                 yield sequence
 
         else:
@@ -1400,7 +1485,7 @@ def create_sequence_readers(sources: List[str], targets: List[str],
 
     source_sequence_readers = [SequenceReader(source, vocab, add_eos=True) for source, vocab in
                                 zip(sources, vocab_sources)]
-    breakpoint()
+
     target_sequence_readers = [SequenceReader(target, vocab, add_bos=True) for target, vocab in
                                zip(targets, vocab_targets)]
     return source_sequence_readers, target_sequence_readers
@@ -1421,13 +1506,14 @@ def create_sequence_readers_time(sources: List[str], targets: List[str],
     """
     source_sequence_readers = []
 
-    source_sequence_readers = [SequenceReader(source, source_timestamps, vocab, add_eos=True) for source, vocab in
-                                zip(sources, vocab_sources)]
+    source_sequence_readers = [SequenceReader(source, vocab, source_timestamps, add_eos=True) for source, vocab, source_timestamp in
+                                zip(sources, vocab_sources, source_timestamps)]
     
 
     target_timestamps = []
-    target_sequence_readers = [SequenceReader(target, target_timestamps, vocab, add_bos=True) for target, vocab in
+    target_sequence_readers = [SequenceReader(target, vocab, target_timestamps, add_bos=True) for target, vocab in
                                zip(targets, vocab_targets)]
+
     return source_sequence_readers, target_sequence_readers
 
 
@@ -1444,6 +1530,7 @@ def parallel_iter(source_iterables: Sequence[Iterable[Optional[Any]]],
     :param skip_blanks: Whether to skip empty target lines.
     :return: Iterators over sources and target.
     """
+
     source_iterators = [iter(s) for s in source_iterables]
     target_iterators = [iter(t) for t in target_iterables]
     return parallel_iterate(source_iterators, target_iterators, skip_blanks)
@@ -1465,6 +1552,7 @@ def parallel_iterate(source_iterators: Sequence[Iterator[Optional[Any]]],
     :return: Iterators over sources and target.
     """
     num_skipped = 0
+
     while True:
         try:
             sources = [next(source_iter) for source_iter in source_iterators]
@@ -1482,7 +1570,7 @@ def parallel_iterate(source_iterators: Sequence[Iterator[Optional[Any]]],
 
     if num_skipped > 0:
         logger.warning("Parallel reading of sequences skipped %d elements", num_skipped)
-
+    
     check_condition(
         all(next(cast(Iterator, s), None) is None for s in source_iterators) and \
         all(next(cast(Iterator, t), None) is None for t in target_iterators),
@@ -1777,7 +1865,6 @@ class BaseParallelSampleIter(mx.io.DataIter):
                  bucket_batch_sizes: List[BucketBatchSize],
                  num_source_factors: int = 1,
                  num_target_factors: int = 1,
-                 num_source_timestamps: int = 0,
                  permute: bool = True,
                  dtype='float32') -> None:
         super().__init__(batch_size=batch_size)
@@ -1830,14 +1917,12 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
                  max_lens: Tuple[int, int],
                  num_source_factors: int = 1,
                  num_target_factors: int = 1,
-                 num_source_timestamps: int=0,
                  dtype='float32') -> None:
         super().__init__(buckets=[bucket],
                          batch_size=batch_size,
                          bucket_batch_sizes=[BucketBatchSize(bucket, batch_size, None)],
                          num_source_factors=num_source_factors,
                          num_target_factors=num_target_factors,
-                         num_source_timestamps=num_source_timestamps,
                          permute=False,
                          dtype=dtype)
         self.data_loader = data_loader
@@ -1845,7 +1930,7 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
             self.sources_sentences, self.targets_sentences = create_sequence_readers_time(sources, targets, source_timestamps,
                                                                                        source_vocabs, target_vocabs)
         else:
-            self.sources_sentences, self.targets_sentences = create_sequence_readers_time(sources, targets, source_timestamps,
+            self.sources_sentences, self.targets_sentences = create_sequence_readers(sources, targets,
                                                                                        source_vocabs, target_vocabs)
         self.sources_iters = [iter(s) for s in self.sources_sentences]
         self.targets_iters = [iter(s) for s in self.targets_sentences]
@@ -2157,6 +2242,7 @@ class Batch:
 
     def shards(self) -> Iterable[Tuple[Tuple, Dict[str, mx.nd.NDArray]]]:
         assert isinstance(self.source, list), "Must call split_and_load() first"
+
         for i, inputs in enumerate(zip(self.source, self.source_length, self.target, self.target_length)):
             # model inputs, labels
             yield inputs, {name: label[i] for name, label in self.labels.items()}
@@ -2181,10 +2267,24 @@ def create_batch_from_parallel_sample(source: mx.nd.NDArray, target: mx.nd.NDArr
     :param target: Target array. Shape: (batch, target_length, num_target_factors).
     :param label: Time-shifted label array. Shape: (batch, target_length, num_target_factors).
     """
-    source_words = mx.nd.slice(source, begin=(None, None, 0), end=(None, None, 1)).squeeze(axis=2, inplace=True)
-    source_length = mx.nd.sum(source_words != C.PAD_ID, axis=1)
+    source_length = []
+
+
+    if source.ndim == 4: #source for frame embeddings has one dimension more than the regular source
+        source_words = mx.nd.slice(source, begin=(None, None, 0), end=(None, None, 2)).squeeze(axis=3, inplace=True)
+
+        #eliminate timestamps to get count for length
+        source_length_arr = mx.nd.slice(source, begin=(None, None, 0), end=(None, None, 1)).squeeze(axis=3, inplace=True)
+        source_length = mx.nd.sum(source_length_arr != C.PAD_ID, axis=1).squeeze(axis=1, inplace=True)
+        source_length = mx.nd.cast(source_length, dtype='float32')
+
+    else: #way to go for data sets without frame embeddings
+        source_words = mx.nd.slice(source, begin=(None, None, 0), end=(None, None, 1)).squeeze(axis=2, inplace=True)
+        source_length = mx.nd.sum(source_words != C.PAD_ID, axis=1)
+
+
     target_words = mx.nd.squeeze(mx.nd.slice(target, begin=(None, None, 0), end=(None, None, 1)), axis=2)
-    target_length = mx.nd.sum(target_words != C.PAD_ID, axis=1)
+    target_length = mx.nd.sum((target_words != C.PAD_ID), axis=1)
     length_ratio = source_length / target_length
 
     source_shape = source.shape

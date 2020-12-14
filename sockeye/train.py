@@ -311,7 +311,7 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
             batch_num_devices=batch_num_devices,
             batch_sentences_multiple_of=args.batch_sentences_multiple_of)
         
-        breakpoint()
+
 
         check_condition(all([combine in [C.FACTORS_COMBINE_SUM, C.FACTORS_COMBINE_AVERAGE]
                              for combine in args.source_factors_combine])
@@ -622,6 +622,8 @@ def create_model_config(args: argparse.Namespace,
     embed_dropout_source, embed_dropout_target = args.embed_dropout
     source_vocab_size, *source_factor_vocab_sizes = source_vocab_sizes
     target_vocab_size, *target_factor_vocab_sizes = target_vocab_sizes
+    
+
 
     config_encoder, encoder_num_hidden = create_encoder_config(args, max_seq_len_source, max_seq_len_target,
                                                                num_embed_source)
@@ -680,12 +682,14 @@ def create_model_config(args: argparse.Namespace,
 
     config_embed_source = encoder.EmbeddingConfig(vocab_size=source_vocab_size,
                                                   num_embed=num_embed_source,
+                                                  embedding_type=args.transformer_positional_embedding_type,
                                                   dropout=embed_dropout_source,
                                                   factor_configs=source_factor_configs,
                                                   allow_sparse_grad=allow_sparse_grad)
 
     config_embed_target = encoder.EmbeddingConfig(vocab_size=target_vocab_size,
                                                   num_embed=num_embed_target,
+                                                  embedding_type=args.transformer_positional_embedding_type,
                                                   dropout=embed_dropout_target,
                                                   factor_configs=target_factor_configs,
                                                   allow_sparse_grad=allow_sparse_grad)
@@ -918,7 +922,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
     :param checkpoint_callback: An optional callback function (int -> None). The function will be called
 +                                each time a checkpoint has been reached
     """
-    breakpoint()
+
     if args.dry_run:
         # Modify arguments so that we write to a temporary directory and
         # perform 0 training iterations
@@ -966,7 +970,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
             if args.quiet_secondary_workers:
                 args.quiet = True
             console_level = args.loglevel_secondary_workers
-    breakpoint()
+
     check_arg_compatibility(args)
     output_folder = os.path.abspath(args.output)
     resume_training = check_resume(args, output_folder)
@@ -1000,7 +1004,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
 
         utils.seed_rngs(args.seed, ctx=context)
         
-        breakpoint()
+
         train_iter, eval_iter, config_data, source_vocabs, target_vocabs = create_data_iters_and_vocabs(
             args=args,
             max_seq_len_source=max_seq_len_source,
@@ -1029,18 +1033,17 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
                     '|'.join([str(size) for size in source_vocab_sizes]),
                     '|'.join([str(size) for size in target_vocab_sizes]))
 
-        breakpoint()
+
         model_config = create_model_config(args=args,
                                            source_vocab_sizes=source_vocab_sizes,
                                            target_vocab_sizes=target_vocab_sizes,
                                            max_seq_len_source=max_seq_len_source,
                                            max_seq_len_target=max_seq_len_target,
                                            config_data=config_data)
-        breakpoint()
+
         training_model = model.SockeyeModel(model_config)
 
         # Handle options that override training settings
-        breakpoint()
         trainer_config = training.TrainerConfig(
             output_dir=args.output,
             early_stopping_metric=args.optimized_metric,
@@ -1149,7 +1152,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
 
         cp_decoder = create_checkpoint_decoder(args, exit_stack, context,
                                                training_model, source_vocabs, target_vocabs, hybridize=hybridize)
-        breakpoint()
+
         training_state = trainer.fit(train_iter=train_iter, validation_iter=eval_iter, checkpoint_decoder=cp_decoder)
         return training_state
 

@@ -122,10 +122,17 @@ class SockeyeModel(mx.gluon.Block):
         with self.name_scope():
             # source & target embeddings
             self.source_embed_weight, self.target_embed_weight, self.output_weight = self._get_embedding_weights()
+            if config.config_embed_source.embedding_type == "frames_source":
 
-            self.embedding_source = encoder.Embedding(config.config_embed_source,
-                                                      prefix=self.prefix + C.SOURCE_EMBEDDING_PREFIX,
+                self.embedding_source = encoder.Embedding(config.config_embed_source,
+                                                      prefix=self.prefix + C.SOURCE_FRAME_EMBEDDING_PREFIX,
                                                       embed_weight=self.source_embed_weight)
+
+            else:
+                self.embedding_source = encoder.Embedding(config.config_embed_source,
+                                                        prefix=self.prefix + C.SOURCE_EMBEDDING_PREFIX,
+                                                        embed_weight=self.source_embed_weight)
+                                                        
             self.embedding_target = encoder.Embedding(config.config_embed_target,
                                                       prefix=self.prefix + C.TARGET_EMBEDDING_PREFIX,
                                                       embed_weight=self.target_embed_weight)
@@ -286,6 +293,7 @@ class SockeyeModel(mx.gluon.Block):
 
         for i, factor_output_layer in enumerate(self.factor_output_layers, 1):
             forward_output[C.FACTOR_LOGITS_NAME % i] = factor_output_layer(target, None)
+
 
         if self.length_ratio is not None:
             # predicted_length_ratios: (batch_size,)

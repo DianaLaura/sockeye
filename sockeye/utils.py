@@ -208,10 +208,16 @@ def get_tokens(line: str) -> Iterator[str]:
         if (len(token) > 0) and (token != C.SEP_SYMBOL):
             yield token
 
-def get_timestamps(line: str) -> Iterator[str]:
-    for timestamp in line.rstrip().split():
-        if (len(timestamp) > 0) and (timestamp != C.SEP_SYMBOL):
-            yield timestamp
+def get_tokens_with_timestamps(tokens: str) -> Iterator[str]:
+ 
+    tokens_unzipped = list(zip(*tokens))
+    tokenline = tokens_unzipped[0][1].rstrip().split()
+    timeline = tokens_unzipped[1][1].rstrip().split()
+    for i in range(0, len(tokenline)):
+        if (len(tokenline[i]) > 0):
+            if timeline[i] == C.SEP_SYMBOL:
+                timeline[i] = C.SEP_ID
+            yield (tokenline[i],timeline[i])
             
 
 
