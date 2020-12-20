@@ -294,7 +294,7 @@ def analyze_sequence_lengths(sources: List[str],
     logger.info("Mean training target/source length ratio: %.2f (+-%.2f)",
                 length_statistics.length_ratio_mean,
                 length_statistics.length_ratio_std)
-    #breakpoint()
+
     return length_statistics
 
 
@@ -553,8 +553,7 @@ class RawParallelDatasetLoader:
             for sentno, (sources, targets) in enumerate(parallel_iter(source_iterables,
                                                                   target_iterables, skip_blanks=self.skip_blanks), 1):
             
-                #sources = list(zip(*source_iterables))
-                sources = [[[]] if stream is None else stream for stream in sources]
+                sources = [[] if stream is None else stream for stream in sources]
                 targets = [[] if stream is None else stream for stream in targets]
                 source_len = len(sources[0])
                 target_len = len(targets[0])
@@ -626,7 +625,6 @@ class RawParallelDatasetLoader:
             num_tokens_target += buck[1]
             num_pad_source += buck[0] - source_len
             num_pad_target += buck[1] - target_len
-
             sample_index = bucket_sample_index[buck_index]
             for i, s in enumerate(sources):
                 data_source[buck_index][sample_index, 0:source_len, i] = s
@@ -642,7 +640,7 @@ class RawParallelDatasetLoader:
                     data_target[buck_index][sample_index, 0:target_len + 1, i] = t
 
             bucket_sample_index[buck_index] += 1
-
+         
             for i in range(len(data_source)):
                 data_source[i] = mx.nd.from_numpy(data_source[i], zero_copy=True)
                 data_target[i] = mx.nd.from_numpy(data_target[i], zero_copy=True)
@@ -2113,7 +2111,6 @@ class ParallelSampleIter(BaseParallelSampleIter):
         super().__init__(buckets=buckets, batch_size=batch_size, bucket_batch_sizes=bucket_batch_sizes,
                          num_source_factors=num_source_factors, num_target_factors=num_target_factors,
                          permute=permute, dtype=dtype)
-
         # create independent lists to be shuffled
         self.data = ParallelDataSet(list(data.source), list(data.target))
 

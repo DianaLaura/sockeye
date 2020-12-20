@@ -23,6 +23,7 @@ class ConfigTest(config.Config):
     yaml_tag = "!ConfigTest"
 
     def __init__(self, param, config=None):
+
         super().__init__()
         self.param = param
         self.config = config
@@ -104,7 +105,6 @@ def test_config_missing_attributes_filled_with_default():
     # when we load a configuration object that does not contain all attributes as the current version of the
     # configuration object we expect the missing attributes to be filled with the default values taken from the
     # __init__ method.
-
     config_obj = config.Config.load("test/data/config_with_missing_attributes.yaml")
     assert config_obj.new_attribute == "new_attribute"
 

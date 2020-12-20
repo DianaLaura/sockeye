@@ -91,8 +91,8 @@ def test_get_bucket(buckets, length, expected_bucket):
 tokens2ids_tests = [(["a", "b", "c"], {"a": 1, "b": 0, "c": 300, C.UNK_SYMBOL: 12}, [1, 0, 300]),
                     (["a", "x", "c"], {"a": 1, "b": 0, "c": 300, C.UNK_SYMBOL: 12}, [1, 12, 300])]
 
-tokens_frames2ids_tests = [([["a",1], ["b",3], ["c",5]], {"a": 1, "b": 0, "c": 300, C.UNK_SYMBOL: 12}, [1, 0, 300]),
-                ([["a",1], ["x",2], ["c",6]], {"a": 1, "b": 0, "c": 300, C.UNK_SYMBOL: 12}, [1, 12, 300])]
+tokens_frames2ids_tests = [([["a",1], ["b",3], ["c",5]], {"a": 1, "b": 0, "c": 300, C.UNK_SYMBOL: 12}, [[1,1], [0,3], [300,5]]),
+                ([["a",1], ["x",2], ["c",6]], {"a": 1, "b": 0, "c": 300, C.UNK_SYMBOL: 12}, [[1,1], [12,2], [300,6]])]
 
 @pytest.mark.parametrize("tokens, vocab, expected_ids", tokens2ids_tests)
 def test_tokens2ids(tokens, vocab, expected_ids):
@@ -524,7 +524,6 @@ def test_get_training_data_iters_without_timestamps():
                             test_max_length - C.SPACE_FOR_XOS) as data:
         # tmp common vocab
         vcb = vocab.build_from_paths([data['train_source'], data['train_target']])
-        breakpoint()
         train_iter, val_iter, config_data, data_info = data_io.get_training_data_iters(
             sources=[data['train_source']],
             targets=[data['train_target']],
@@ -566,6 +565,10 @@ def test_get_training_data_iters_without_timestamps():
         bos_id = vcb[C.BOS_SYMBOL]
         eos_id = vcb[C.EOS_SYMBOL]
         expected_first_target_symbols = np.full((batch_size, 1), bos_id, dtype='float32')
+
+        breakpoint()
+
+
         for epoch in range(2):
             while train_iter.iter_next():
                 batch = train_iter.next()
@@ -584,7 +587,9 @@ def test_get_training_data_iters_without_timestamps():
                 assert np.array_equal(label[:, 0], target[:, 1, 0])
                 # each label sequence contains one EOS symbol
                 assert np.sum(label == eos_id) == batch_size
+        
             train_iter.reset()
+        
 
 def test_get_training_data_iters_with_timestamps():
     train_line_count = 100
@@ -607,7 +612,7 @@ def test_get_training_data_iters_with_timestamps():
         # tmp common vocab
         vcb = vocab.build_from_paths([data['train_source'], data['train_target']])
 
-
+        breakpoint()
         train_iter, val_iter, config_data, data_info = data_io.get_training_data_iters(
             sources=[data['train_source']],
             targets=[data['train_target']],

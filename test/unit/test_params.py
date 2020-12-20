@@ -54,7 +54,7 @@ def test_cleanup_param_files_keep_first():
 
 
 def mock_model():
-    config_embed = sockeye.encoder.EmbeddingConfig(vocab_size=20, num_embed=4, dropout=0.0)
+    config_embed = sockeye.encoder.EmbeddingConfig(vocab_size=20, num_embed=4, dropout=0.0, embedding_type = 'fixed')
     config_encoder = sockeye.encoder.EncoderConfig(model_size=4, attention_heads=1, feed_forward_num_hidden=4,
                                                    act_type='relu', num_layers=1, dropout_attention=0.0,
                                                    dropout_act=0.0, dropout_prepost=0.0,

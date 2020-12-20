@@ -657,11 +657,12 @@ class PositionalEmbeddings(mx.gluon.HybridBlock):
         self.scale_up_input = scale_up_input
         self.scale_down_positions = scale_down_positions
         with self.name_scope():
-            if self.weight_type == C.FIXED_POSITIONAL_EMBEDDING or C.FRAME_EMBEDDING_SOURCE:
+            if (self.weight_type == C.FIXED_POSITIONAL_EMBEDDING) or (self.weight_type == C.FRAME_EMBEDDING_SOURCE):
                 pos_weight = get_positional_embeddings(length=self.max_seq_len, depth=self.num_embed)
                 if self.scale_down_positions:
                     pos_weight *= self.num_embed ** -0.5
                 self.weight = self.params.get_constant('weight', pos_weight)
+
             elif self.weight_type == C.LEARNED_POSITIONAL_EMBEDDING:
                 self.weight = self.params.get('weight', shape=(self.max_seq_len, self.num_embed), init=weight_init)
             else:
@@ -731,7 +732,7 @@ class FrameEmbeddings(mx.gluon.HybridBlock):
                  scale_up_input: bool,
                  scale_down_positions: bool,
                  weight_init: Optional[Union[str, mx.init.Initializer]] = None) -> None:
-        utils.check_condition(num_embed % 2 == 0, "Positional embeddings require an even embedding size it "
+        utils.check_condition(num_embed % 2 == 0, "Frame embeddings require an even embedding size it "
                                                   "is however %d." % num_embed)
 
         super().__init__(prefix=prefix)
@@ -767,6 +768,7 @@ class FrameEmbeddings(mx.gluon.HybridBlock):
 
         else:
             # (batch_size or 1, seq_len, num_embed)
+            breakpoint()
             tokens, frames = F.split(data, num_outputs = 2, axis = 2)
 
             frames = frames.squeeze(axis=2)

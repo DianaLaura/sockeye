@@ -25,17 +25,29 @@ import sockeye.transformer
                                         combine=C.FACTORS_COMBINE_SUM,
                                         share_embedding=False)]),
 ])
-def test_embedding_encoder(dropout, factor_configs):
-    config = sockeye.encoder.EmbeddingConfig(vocab_size=20, num_embed=10, dropout=dropout, factor_configs=factor_configs)
+def test_embedding_encoder_default(dropout, factor_configs):
+    config = sockeye.encoder.EmbeddingConfig(vocab_size=20, num_embed=10, dropout=dropout, factor_configs=factor_configs, embedding_type="fixed")
     embedding = sockeye.encoder.Embedding(config, prefix='embedding')
     assert type(embedding) == sockeye.encoder.Embedding
 
+@pytest.mark.parametrize('dropout, factor_configs', [
+    (0., None),
+    (0.1, [sockeye.encoder.FactorConfig(vocab_size=5,
+                                        num_embed=5,
+                                        combine=C.FACTORS_COMBINE_SUM,
+                                        share_embedding=False)]),
+])
+
+def test_embedding_encoder_frame_embeddings(dropout, factor_configs):
+    config = sockeye.encoder.EmbeddingConfig(vocab_size=20, num_embed=10, dropout=dropout, factor_configs=factor_configs, embedding_type="frames_source")
+    embedding = sockeye.encoder.Embedding(config, prefix='embedding')
+    assert type(embedding) == sockeye.encoder.Embedding
 
 @pytest.mark.parametrize('lhuc', [
     (False,),
     (True,)
 ])
-def test_get_transformer_encoder(lhuc):
+def test_get_transformer_encoder_default(lhuc):
     prefix = "test_"
     config = sockeye.transformer.TransformerConfig(model_size=20,
                                                    attention_heads=10,
@@ -46,6 +58,34 @@ def test_get_transformer_encoder(lhuc):
                                                    dropout_act=2.0,
                                                    dropout_prepost=3.0,
                                                    positional_embedding_type=C.LEARNED_POSITIONAL_EMBEDDING,
+                                                   preprocess_sequence='test_pre',
+                                                   postprocess_sequence='test_post',
+                                                   max_seq_len_source=50,
+                                                   max_seq_len_target=60,
+                                                   lhuc=lhuc)
+    encoder = sockeye.encoder.get_transformer_encoder(config, prefix=prefix, dtype = C.DTYPE_FP32)
+    encoder.initialize()
+    encoder.hybridize(static_alloc=True)
+
+    assert type(encoder) == sockeye.encoder.TransformerEncoder
+    assert encoder.prefix == prefix + C.TRANSFORMER_ENCODER_PREFIX
+
+@pytest.mark.parametrize('lhuc', [
+(False,),
+(True,)
+])
+
+def test_get_transformer_encoder_frames(lhuc):
+    prefix = "test_"
+    config = sockeye.transformer.TransformerConfig(model_size=20,
+                                                   attention_heads=10,
+                                                   feed_forward_num_hidden=30,
+                                                   act_type='test_act',
+                                                   num_layers=40,
+                                                   dropout_attention=1.0,
+                                                   dropout_act=2.0,
+                                                   dropout_prepost=3.0,
+                                                   positional_embedding_type=C.FRAME_EMBEDDING_SOURCE,
                                                    preprocess_sequence='test_pre',
                                                    postprocess_sequence='test_post',
                                                    max_seq_len_source=50,

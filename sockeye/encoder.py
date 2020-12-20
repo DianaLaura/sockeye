@@ -369,7 +369,7 @@ class TransformerEncoder(Encoder, mx.gluon.HybridBlock):
                                                                      num_hidden=self.config.model_size)
 
     def hybrid_forward(self, F, data, valid_length):
-        breakpoint()
+
         # positional embedding
         data = self.pos_embedding(data, None)
 

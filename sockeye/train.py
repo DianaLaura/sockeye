@@ -92,6 +92,17 @@ def check_arg_compatibility(args: argparse.Namespace):
                          args.max_num_checkpoint_not_improved)),
                     'Please specify at least one stopping criteria: --max-samples --max-updates --max-checkpoints '
                     '--max-num-epochs --max-num-checkpoint-not-improved')
+    
+    #check if all conditions are met for frame embeddings
+
+    if args.source_frame_embeddings != []:
+       check_condition(args.transformer_positional_embedding_type == 'frames_source',
+                        'To enable frame-embeddings, --transformer_positional_embedding_type'
+                        'has to be frames_source')
+    if args.transformer_positional_embedding_type == 'frames_source':
+        check_condition(args.source_frame_embeddings != [], 
+                        'To use the frames_source embedding type, a document with timestamps scaled as' 
+                        'frames / integers must be provided under --source_frame_embeddings')
 
     # Check and possibly adapt the parameters for source factors
     n_source_factors = len(args.validation_source_factors)
@@ -297,6 +308,10 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
     if args.prepared_data is not None:
         utils.check_condition(args.source is None and args.target is None, either_raw_or_prepared_error_msg)
         if not resume_training:
+            check_condition(len(args.val_source_frame_embeddings) == len(args.source_frame_embeddings),
+                        'Training data and validation data must have the same number of time stamp sources, but'
+                        'the amount of documents for --source_frame_embeddings and val_source_frame_embeddings differs')
+
             utils.check_condition(args.source_vocab is None and args.target_vocab is None,
                                   "You are using a prepared data folder, which is tied to a vocabulary. "
                                   "To change it you need to rerun data preparation with a different vocabulary.")
@@ -935,12 +950,6 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
     if args.amp:
         using_amp = True
         amp.init()
-
-    # Enabling frame-embeddings
-    if args.source_frame_embeddings != []:
-        C.FRAME_EMBEDDINGS = True
-    else:
-        C.FRAME_EMBEDDINGS = False
 
     # When using Horovod, multiple workers (instances of sockeye.train) are
     # launched via MPI.  Each worker has a rank (unique among all workers in the
