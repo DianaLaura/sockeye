@@ -87,11 +87,12 @@ def generate_digits_time_file(source_path: str,
         for digits in all_digits:
             timestamps = []
             time = 0
+     
             while len(timestamps) < len(digits):
-                timestamps.append(time)
+                timestamps.append(str(time))
                 time += 1
             print(C.TOKEN_SEPARATOR.join(digits), file=source_out)
-            print(C.TOKEN_SEPARATOR + str(timestamps), file=time_out)
+            print(C.TOKEN_SEPARATOR.join(timestamps), file=time_out)
             if sort_target:
                 digits.sort()
             print(C.TOKEN_SEPARATOR.join(digits), file=target_out)

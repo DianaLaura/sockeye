@@ -1028,8 +1028,7 @@ def get_training_data_iters(sources: List[str],
     logger.info("===============================")
     logger.info("Creating training data iterator")
     logger.info("===============================")
-    if source_timestamps != []:
-        sources.append(source_timestamps)
+    
 
     # Pass 1: get target/source length ratios.
     length_statistics = analyze_sequence_lengths(sources, targets, source_timestamps, source_vocabs, target_vocabs,
@@ -1342,10 +1341,11 @@ def tokens_frames2ids(tokens_frames: Iterable[str], vocab: Dict[str, int]) -> Li
     :param vocab: Vocabulary (containing UNK symbol).
     :return: List of word ids.
     """
-
+    
     unzipped_tokens_frames = list(zip(*tokens_frames))
     tokens = unzipped_tokens_frames[0]
     timestamps = unzipped_tokens_frames[1]
+
 
     return [[vocab.get(tokens[w], vocab[C.UNK_SYMBOL]), int(timestamps[w])] for w in range (0, len(tokens))]
 
@@ -1437,11 +1437,13 @@ class SequenceReader:
 
     def __iter__(self):
         if len(self.timestamps) > 0 :
-            for token in read_content_time(self.path, self.timestamps, self.limit):
+
+            for tokens in read_content_time(self.path, self.timestamps, self.limit):
                 if self.vocab is not None:
-                    sequence = tokens_frames2ids(token, self.vocab)
+                    sequence = tokens_frames2ids(tokens, self.vocab)
                 else:
-                    sequence = frames2ids(token, self.vocab)
+                    sequence = frames2ids(tokens, self.vocab)
+
                 if len(sequence) == 0:
                     yield None
                     continue

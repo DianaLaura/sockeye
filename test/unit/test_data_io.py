@@ -504,6 +504,7 @@ def test_non_parallel_calculate_length_statistics(sources, targets):
         data_io.calculate_length_statistics(sources, targets, 5, 5)
 
 
+
 def test_get_training_data_iters_without_timestamps():
     train_line_count = 100
     train_line_count_empty = 0
@@ -581,6 +582,7 @@ def test_get_training_data_iters_without_timestamps():
                 assert source.shape[2] == target.shape[2] == num_source_factors == num_target_factors
                 # target first symbol should be BOS
                 # each source sequence contains one EOS symbol
+                breakpoint()
                 assert np.sum(source == eos_id) == batch_size
                 assert np.array_equal(target[:, 0], expected_first_target_symbols)
                 # label first symbol should be 2nd target symbol
@@ -589,7 +591,7 @@ def test_get_training_data_iters_without_timestamps():
                 assert np.sum(label == eos_id) == batch_size
         
             train_iter.reset()
-        
+
 
 def test_get_training_data_iters_with_timestamps():
     train_line_count = 100
@@ -610,9 +612,9 @@ def test_get_training_data_iters_with_timestamps():
                             test_line_count, test_line_count_empty,
                             test_max_length - C.SPACE_FOR_XOS) as data:
         # tmp common vocab
-        vcb = vocab.build_from_paths([data['train_source'], data['train_target']])
+        vcb = vocab.build_from_paths([data['train_source'], data['train_target']], )
 
-        breakpoint()
+        
         train_iter, val_iter, config_data, data_info = data_io.get_training_data_iters(
             sources=[data['train_source']],
             targets=[data['train_target']],
@@ -632,6 +634,7 @@ def test_get_training_data_iters_with_timestamps():
             max_seq_len_target=train_max_length,
             bucketing=True,
             bucket_width=10)
+        
         assert isinstance(train_iter, data_io.ParallelSampleIter)
         assert isinstance(val_iter, data_io.ParallelSampleIter)
         assert isinstance(config_data, data_io.DataConfig)
@@ -663,7 +666,7 @@ def test_get_training_data_iters_with_timestamps():
                 label = batch.labels[C.TARGET_LABEL_NAME].asnumpy()  # TODO: still 2-shape: (batch, length)
                 length_ratio_label = batch.labels[C.LENRATIO_LABEL_NAME].asnumpy()
                 assert source.shape[0] == target.shape[0] == label.shape[0] == batch_size
-                assert source.shape[2] == target.shape[2] == num_source_factors == num_target_factors
+                assert source.shape[2] - 1 == target.shape[2] == num_source_factors == num_target_factors #calculating timestamps out
                 # target first symbol should be BOS
                 # each source sequence contains one EOS symbol
                 assert np.sum(source == eos_id) == batch_size
