@@ -10,7 +10,6 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
 # express or implied. See the License for the specific language governing
 # permissions and limitations under the License.
-
 import os
 import random
 from tempfile import TemporaryDirectory
@@ -525,6 +524,7 @@ def test_get_training_data_iters_without_timestamps():
                             test_max_length - C.SPACE_FOR_XOS) as data:
         # tmp common vocab
         vcb = vocab.build_from_paths([data['train_source'], data['train_target']])
+        breakpoint()
         train_iter, val_iter, config_data, data_info = data_io.get_training_data_iters(
             sources=[data['train_source']],
             targets=[data['train_target']],
@@ -567,11 +567,10 @@ def test_get_training_data_iters_without_timestamps():
         eos_id = vcb[C.EOS_SYMBOL]
         expected_first_target_symbols = np.full((batch_size, 1), bos_id, dtype='float32')
 
-        breakpoint()
-
 
         for epoch in range(2):
             while train_iter.iter_next():
+                breakpoint()
                 batch = train_iter.next()
                 assert isinstance(batch, data_io.Batch)
                 source = batch.source.asnumpy()
@@ -582,7 +581,7 @@ def test_get_training_data_iters_without_timestamps():
                 assert source.shape[2] == target.shape[2] == num_source_factors == num_target_factors
                 # target first symbol should be BOS
                 # each source sequence contains one EOS symbol
-                breakpoint()
+                
                 assert np.sum(source == eos_id) == batch_size
                 assert np.array_equal(target[:, 0], expected_first_target_symbols)
                 # label first symbol should be 2nd target symbol

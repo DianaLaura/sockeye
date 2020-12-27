@@ -14,6 +14,7 @@
 """
 Implements data iterators and I/O related functions for sequence-to-sequence models.
 """
+
 import bisect
 import logging
 import math
@@ -649,7 +650,7 @@ class RawParallelDatasetLoader:
                 logger.info("Created bucketed parallel data set. Introduced padding: source=%.1f%% target=%.1f%%)",
                             num_pad_source / num_tokens_source * 100,
                             num_pad_target / num_tokens_target * 100)
-
+        breakpoint()
         return ParallelDataSet(data_source, data_target)
 
 
@@ -1481,7 +1482,7 @@ def create_sequence_readers(sources: List[str], targets: List[str],
     :param vocab_targets: The target vocabularies.
     :return: The source sequence readers and the target reader.
     """
-    source_sequence_readers = []
+
 
     source_sequence_readers = [SequenceReader(source, vocab, add_eos=True) for source, vocab in
                                 zip(sources, vocab_sources)]
@@ -1662,8 +1663,11 @@ class ParallelDataSet:
                  target: List[mx.nd.array]) -> None:
         check_condition(len(source) == len(target),
                         "Number of buckets for source/target do not match: %d/%d." % (len(source), len(target)))
+        breakpoint()
         self.source = source
         self.target = target
+    
+    
 
     def __len__(self) -> int:
         return len(self.source)
@@ -2100,7 +2104,7 @@ class ParallelSampleIter(BaseParallelSampleIter):
     Data iterator on a bucketed ParallelDataSet. Shuffles data at every reset and supports saving and loading the
     iterator state.
     """
-
+ 
     def __init__(self,
                  data: ParallelDataSet,
                  buckets,
@@ -2114,8 +2118,9 @@ class ParallelSampleIter(BaseParallelSampleIter):
                          num_source_factors=num_source_factors, num_target_factors=num_target_factors,
                          permute=permute, dtype=dtype)
         # create independent lists to be shuffled
+        
         self.data = ParallelDataSet(list(data.source), list(data.target))
-
+        breakpoint()
         # create index tuples (buck_idx, batch_start_pos) into buckets.
         # This is the list of all batches across all buckets in the dataset. These will be shuffled.
         self.batch_indices = get_batch_indices(self.data, bucket_batch_sizes)
@@ -2169,6 +2174,7 @@ class ParallelSampleIter(BaseParallelSampleIter):
         batch_size = self.bucket_batch_sizes[i].batch_size
         source = self.data.source[i][j:j + batch_size]
         target, label = create_target_and_shifted_label_sequences(self.data.target[i][j:j + batch_size])
+        breakpoint()
         return create_batch_from_parallel_sample(source, target, label)
 
     def save_state(self, fname: str):
