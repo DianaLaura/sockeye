@@ -646,6 +646,7 @@ class RawParallelDatasetLoader:
             for i in range(len(data_source)):
                 data_source[i] = mx.nd.from_numpy(data_source[i], zero_copy=True)
                 data_target[i] = mx.nd.from_numpy(data_target[i], zero_copy=True)
+            logger.debug('State of data_source: {}'.format(data_source))
 
             if num_tokens_source > 0 and num_tokens_target > 0:
                 logger.info("Created bucketed parallel data set. Introduced padding: source=%.1f%% target=%.1f%%)",
