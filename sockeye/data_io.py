@@ -38,6 +38,7 @@ from . import vocab
 from .utils import check_condition, smart_open, get_tokens, get_tokens_with_timestamps, OnlineMeanAndVariance
 
 logger = logging.getLogger(__name__)
+logger.setLevel('DEBUG')
 
 
 def define_buckets(max_seq_len: int, step: int = 10) -> List[int]:
@@ -529,7 +530,6 @@ class RawParallelDatasetLoader:
              target_iterables: Sequence[Iterable],
              num_samples_per_bucket: List[int]) -> 'ParallelDataSet':
 
-        
         assert len(num_samples_per_bucket) == len(self.buckets)
         num_source_factors = len(source_iterables)
         num_target_factors = len(target_iterables)
@@ -612,6 +612,7 @@ class RawParallelDatasetLoader:
                                                                     target_iterables, skip_blanks=self.skip_blanks), 1):
                 sources = [[] if stream is None else stream for stream in sources]
                 targets = [[] if stream is None else stream for stream in targets]
+                logger.debug('Sources value on sentno {}: {}'.format(sentno + sources))
                 source_len = len(sources[0])
                 target_len = len(targets[0])
                 buck_index, buck = get_parallel_bucket(self.buckets, source_len, target_len)
@@ -650,7 +651,6 @@ class RawParallelDatasetLoader:
                 logger.info("Created bucketed parallel data set. Introduced padding: source=%.1f%% target=%.1f%%)",
                             num_pad_source / num_tokens_source * 100,
                             num_pad_target / num_tokens_target * 100)
-        breakpoint()
         return ParallelDataSet(data_source, data_target)
 
 
@@ -1034,6 +1034,7 @@ def get_training_data_iters(sources: List[str],
     # Pass 1: get target/source length ratios.
     length_statistics = analyze_sequence_lengths(sources, targets, source_timestamps, source_vocabs, target_vocabs,
                                                  max_seq_len_source, max_seq_len_target)
+    
 
     if not allow_empty:
         check_condition(length_statistics.num_sents > 0,
@@ -1663,7 +1664,7 @@ class ParallelDataSet:
                  target: List[mx.nd.array]) -> None:
         check_condition(len(source) == len(target),
                         "Number of buckets for source/target do not match: %d/%d." % (len(source), len(target)))
-        breakpoint()
+
         self.source = source
         self.target = target
     
@@ -2120,7 +2121,7 @@ class ParallelSampleIter(BaseParallelSampleIter):
         # create independent lists to be shuffled
         
         self.data = ParallelDataSet(list(data.source), list(data.target))
-        breakpoint()
+
         # create index tuples (buck_idx, batch_start_pos) into buckets.
         # This is the list of all batches across all buckets in the dataset. These will be shuffled.
         self.batch_indices = get_batch_indices(self.data, bucket_batch_sizes)
@@ -2174,7 +2175,8 @@ class ParallelSampleIter(BaseParallelSampleIter):
         batch_size = self.bucket_batch_sizes[i].batch_size
         source = self.data.source[i][j:j + batch_size]
         target, label = create_target_and_shifted_label_sequences(self.data.target[i][j:j + batch_size])
-        breakpoint()
+        logger.debug('Current state of source: {}'.format(source))
+        logger.debug('Current state of target: {}'.format(target))
         return create_batch_from_parallel_sample(source, target, label)
 
     def save_state(self, fname: str):

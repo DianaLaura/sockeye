@@ -18,14 +18,18 @@ from typing import Optional, List, Tuple
 import mxnet as mx
 import numpy as np
 import pytest
-
+import logging
 from sockeye import constants as C
 from sockeye import data_io
 from sockeye import vocab
 from sockeye.utils import SockeyeError, get_tokens, seed_rngs
 from sockeye.test_utils import tmp_digits_dataset, tmp_digits_timestamp_dataset
 
+logger = logging.getLogger(__name__)
+
 seed_rngs(12)
+
+
 
 define_bucket_tests = [(50, 10, [10, 20, 30, 40, 50]),
                        (50, 20, [20, 40, 50]),
@@ -505,6 +509,7 @@ def test_non_parallel_calculate_length_statistics(sources, targets):
 
 
 def test_get_training_data_iters_without_timestamps():
+    logger.debug('Test training data iters without timestamps')
     train_line_count = 100
     train_line_count_empty = 0
     train_max_length = 30
@@ -570,7 +575,6 @@ def test_get_training_data_iters_without_timestamps():
 
         for epoch in range(2):
             while train_iter.iter_next():
-                breakpoint()
                 batch = train_iter.next()
                 assert isinstance(batch, data_io.Batch)
                 source = batch.source.asnumpy()
@@ -593,6 +597,7 @@ def test_get_training_data_iters_without_timestamps():
 
 
 def test_get_training_data_iters_with_timestamps():
+    logger.debug('Test training data iters with timestamps')
     train_line_count = 100
     train_line_count_empty = 0
     train_max_length = 30
