@@ -612,7 +612,7 @@ class RawParallelDatasetLoader:
                                                                     target_iterables, skip_blanks=self.skip_blanks), 1):
                 sources = [[] if stream is None else stream for stream in sources]
                 targets = [[] if stream is None else stream for stream in targets]
-                logger.debug('Sources value on sentno {}: {}'.format(sentno + sources))
+                logger.debug('Sources value on sentno {}: {}'.format(sentno, sources))
                 source_len = len(sources[0])
                 target_len = len(targets[0])
                 buck_index, buck = get_parallel_bucket(self.buckets, source_len, target_len)
@@ -2176,7 +2176,6 @@ class ParallelSampleIter(BaseParallelSampleIter):
         source = self.data.source[i][j:j + batch_size]
         target, label = create_target_and_shifted_label_sequences(self.data.target[i][j:j + batch_size])
         logger.debug('Current state of source: {}'.format(source))
-        logger.debug('Current state of target: {}'.format(target))
         return create_batch_from_parallel_sample(source, target, label)
 
     def save_state(self, fname: str):

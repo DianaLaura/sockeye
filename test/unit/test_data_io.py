@@ -529,7 +529,7 @@ def test_get_training_data_iters_without_timestamps():
                             test_max_length - C.SPACE_FOR_XOS) as data:
         # tmp common vocab
         vcb = vocab.build_from_paths([data['train_source'], data['train_target']])
-        breakpoint()
+        #breakpoint()
         train_iter, val_iter, config_data, data_info = data_io.get_training_data_iters(
             sources=[data['train_source']],
             targets=[data['train_target']],
