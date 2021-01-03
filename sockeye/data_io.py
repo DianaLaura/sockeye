@@ -535,12 +535,15 @@ class RawParallelDatasetLoader:
         num_target_factors = len(target_iterables)
 
 
-
-        data_source = [np.full((num_samples, source_len, num_source_factors), self.pad_id, dtype=self.dtype)
-                       for (source_len, target_len), num_samples in zip(self.buckets, num_samples_per_bucket)]
+        if source_iterables[0].timestamps != []:
+            data_source = [np.full((num_samples, source_len, num_source_factors, 2), self.pad_id, dtype=self.dtype)
+                    for (source_len, target_len), num_samples in zip(self.buckets, num_samples_per_bucket)]
+        else:
+            data_source = [np.full((num_samples, source_len, num_source_factors), self.pad_id, dtype=self.dtype)
+                        for (source_len, target_len), num_samples in zip(self.buckets, num_samples_per_bucket)]
         data_target = [np.full((num_samples, target_len + 1, num_target_factors), self.pad_id, dtype=self.dtype)
                        for (source_len, target_len), num_samples in zip(self.buckets, num_samples_per_bucket)]
-
+        
         bucket_sample_index = [0 for _ in self.buckets]
 
         # track amount of padding introduced through bucketing
@@ -566,40 +569,38 @@ class RawParallelDatasetLoader:
                         buck_index = len(self.buckets)
                         buck = self.buckets[buck_index]
 
-            num_tokens_source += buck[0]
-            num_tokens_target += buck[1]
-            num_pad_source += buck[0] - source_len
-            num_pad_target += buck[1] - target_len
+                num_tokens_source += buck[0]
+                num_tokens_target += buck[1]
+                num_pad_source += buck[0] - source_len
+                num_pad_target += buck[1] - target_len
 
-            sample_index = bucket_sample_index[buck_index]
+                sample_index = bucket_sample_index[buck_index]
 
-        
-            for i, s in enumerate(sources):
+                for i, s in enumerate(sources):
+                    data_source[buck_index][sample_index, 0:source_len, i] = s
+                
+                for i, t in enumerate(targets):
+                    if i == 0 or not self.shift_target_factors:
+                        # sequence: <BOS> ... <EOS>
+                        t.append(self.eos_id)
+                        data_target[buck_index][sample_index, 0:target_len + 1, i] = t
+                    else:
+                        # sequence: <BOS> <BOS> ...
+                        t.insert(0, C.BOS_ID)
+                        data_target[buck_index][sample_index, 0:target_len + 1, i] = t
 
-                s = np.array(s)
-                s = s.reshape(1,len(s),2,1)
-                data_source[buck_index] = s
-            
-            for i, t in enumerate(targets):
-                if i == 0 or not self.shift_target_factors:
-                    # sequence: <BOS> ... <EOS>
-                    t.append(self.eos_id)
-                    data_target[buck_index][sample_index, 0:target_len + 1, i] = t
-                else:
-                    # sequence: <BOS> <BOS> ...
-                    t.insert(0, C.BOS_ID)
-                    data_target[buck_index][sample_index, 0:target_len + 1, i] = t
-
-            bucket_sample_index[buck_index] += 1
+                bucket_sample_index[buck_index] += 1
 
             for i in range(len(data_source)):
+                shapes = data_source[i].shape
                 if data_source[i].ndim == 3:
-                    shapes = data_source[i].shape
                     zeros = np.zeros((shapes[0],shapes[1],shapes[2]))
                     data_source[i] = np.hstack((data_source[i], zeros))
-                    data_source[i] = data_source[i].reshape(shapes[0], shapes[1], 2, 1)
+                    
                 data_source[i] = mx.nd.from_numpy(data_source[i], zero_copy=True)
+                data_source[i] = data_source[i].reshape(shapes[0], shapes[1], 2, 1)
                 data_target[i] = mx.nd.from_numpy(data_target[i], zero_copy=True)
+                
 
             if num_tokens_source > 0 and num_tokens_target > 0:
                 logger.info("Created bucketed parallel data set. Introduced padding: source=%.1f%% target=%.1f%%)",
@@ -610,9 +611,9 @@ class RawParallelDatasetLoader:
 
             for sentno, (sources, targets) in enumerate(parallel_iter(source_iterables,
                                                                     target_iterables, skip_blanks=self.skip_blanks), 1):
+
                 sources = [[] if stream is None else stream for stream in sources]
                 targets = [[] if stream is None else stream for stream in targets]
-                logger.debug('Sources value on sentno {}: {}'.format(sentno, sources))
                 source_len = len(sources[0])
                 target_len = len(targets[0])
                 buck_index, buck = get_parallel_bucket(self.buckets, source_len, target_len)
@@ -623,35 +624,35 @@ class RawParallelDatasetLoader:
                         buck_index = len(self.buckets)
                         buck = self.buckets[buck_index]
 
-            num_tokens_source += buck[0]
-            num_tokens_target += buck[1]
-            num_pad_source += buck[0] - source_len
-            num_pad_target += buck[1] - target_len
-            sample_index = bucket_sample_index[buck_index]
-            for i, s in enumerate(sources):
-                data_source[buck_index][sample_index, 0:source_len, i] = s
+                num_tokens_source += buck[0]
+                num_tokens_target += buck[1]
+                num_pad_source += buck[0] - source_len
+                num_pad_target += buck[1] - target_len
+                sample_index = bucket_sample_index[buck_index]
+                for i, s in enumerate(sources):
+                    data_source[buck_index][sample_index, 0:source_len, i] = s
 
-            for i, t in enumerate(targets):
-                if i == 0 or not self.shift_target_factors:
-                    # sequence: <BOS> ... <EOS>
-                    t.append(self.eos_id)
-                    data_target[buck_index][sample_index, 0:target_len + 1, i] = t
-                else:
-                    # sequence: <BOS> <BOS> ...
-                    t.insert(0, C.BOS_ID)
-                    data_target[buck_index][sample_index, 0:target_len + 1, i] = t
+                for i, t in enumerate(targets):
+                    if i == 0 or not self.shift_target_factors:
+                        # sequence: <BOS> ... <EOS>
+                        t.append(self.eos_id)
+                        data_target[buck_index][sample_index, 0:target_len + 1, i] = t
+                    else:
+                        # sequence: <BOS> <BOS> ...
+                        t.insert(0, C.BOS_ID)
+                        data_target[buck_index][sample_index, 0:target_len + 1, i] = t
+        
 
-            bucket_sample_index[buck_index] += 1
-         
+                bucket_sample_index[buck_index] += 1
+            
             for i in range(len(data_source)):
                 data_source[i] = mx.nd.from_numpy(data_source[i], zero_copy=True)
                 data_target[i] = mx.nd.from_numpy(data_target[i], zero_copy=True)
-            logger.debug('State of data_source: {}'.format(data_source))
-
             if num_tokens_source > 0 and num_tokens_target > 0:
                 logger.info("Created bucketed parallel data set. Introduced padding: source=%.1f%% target=%.1f%%)",
                             num_pad_source / num_tokens_source * 100,
                             num_pad_target / num_tokens_target * 100)
+            
         return ParallelDataSet(data_source, data_target)
 
 
@@ -1073,7 +1074,7 @@ def get_training_data_iters(sources: List[str],
     data_loader = RawParallelDatasetLoader(buckets=buckets,
                                            eos_id=C.EOS_ID,
                                            pad_id=C.PAD_ID)
-
+    
     training_data = data_loader.load(sources_sentences, targets_sentences,
                                      data_statistics.num_sents_per_bucket).fill_up(bucket_batch_sizes)
 
@@ -1089,6 +1090,7 @@ def get_training_data_iters(sources: List[str],
                              max_seq_len_target=max_seq_len_target,
                              num_source_factors=len(sources),
                              num_target_factors=len(targets))
+
 
     train_iter = ParallelSampleIter(data=training_data,
                                     buckets=buckets,
@@ -2120,7 +2122,7 @@ class ParallelSampleIter(BaseParallelSampleIter):
                          num_source_factors=num_source_factors, num_target_factors=num_target_factors,
                          permute=permute, dtype=dtype)
         # create independent lists to be shuffled
-        
+
         self.data = ParallelDataSet(list(data.source), list(data.target))
 
         # create index tuples (buck_idx, batch_start_pos) into buckets.
@@ -2176,7 +2178,6 @@ class ParallelSampleIter(BaseParallelSampleIter):
         batch_size = self.bucket_batch_sizes[i].batch_size
         source = self.data.source[i][j:j + batch_size]
         target, label = create_target_and_shifted_label_sequences(self.data.target[i][j:j + batch_size])
-        logger.debug('Current state of source: {}'.format(source))
         return create_batch_from_parallel_sample(source, target, label)
 
     def save_state(self, fname: str):
