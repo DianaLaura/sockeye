@@ -38,7 +38,7 @@ from . import vocab
 from .utils import check_condition, smart_open, get_tokens, get_tokens_with_timestamps, OnlineMeanAndVariance
 
 logger = logging.getLogger(__name__)
-logger.setLevel('DEBUG')
+
 
 
 def define_buckets(max_seq_len: int, step: int = 10) -> List[int]:

@@ -768,7 +768,6 @@ class FrameEmbeddings(mx.gluon.HybridBlock):
 
         else:
             # (batch_size or 1, seq_len, num_embed)
-            breakpoint()
             tokens, frames = F.split(data, num_outputs = 2, axis = 2)
 
             frames = frames.squeeze(axis=2)
