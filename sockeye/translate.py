@@ -153,13 +153,15 @@ def run_translate(args: argparse.Namespace):
                            chunk_size=args.chunk_size,
                            input_file=args.input,
                            input_factors=args.input_factors,
+                           input_timestamps = args.frames,
                            input_is_json=args.json_input)
 
 
 def make_inputs(input_file: Optional[str],
                 translator: inference.Translator,
                 input_is_json: bool,
-                input_factors: Optional[List[str]] = None) -> Generator[inference.TranslatorInput, None, None]:
+                input_factors: Optional[List[str]] = None,
+                timestamps: Optional[List[str]] = None) -> Generator[inference.TranslatorInput, None, None]:
     """
     Generates TranslatorInput instances from input. If input is None, reads from stdin. If num_input_factors > 1,
     the function will look for factors attached to each token, separated by '|'.
@@ -172,6 +174,7 @@ def make_inputs(input_file: Optional[str],
     :param input_factors: Source factor files.
     :return: TranslatorInput objects.
     """
+   
     if input_file is None:
         check_condition(input_factors is None, "Translating from STDIN, not expecting any factor files.")
         for sentence_id, line in enumerate(sys.stdin, 1):
@@ -185,11 +188,14 @@ def make_inputs(input_file: Optional[str],
                                                                 translator=translator)
     else:
         input_factors = [] if input_factors is None else input_factors
+        timestamps = [] if timestamps is None else timestamps
         inputs = [input_file] + input_factors
         if not input_is_json:
             check_condition(translator.num_source_factors == len(inputs),
                             "Model(s) require %d factors, but %d given (through --input and --input-factors)." % (
                                 translator.num_source_factors, len(inputs)))
+        if translator.has_source_timestamps:
+            check_condition(timestamps != [], "Model requires one file with frames (through --frames)")
         with ExitStack() as exit_stack:
             streams = [exit_stack.enter_context(data_io.smart_open(i)) for i in inputs]
             for sentence_id, inputs in enumerate(zip(*streams), 1):
@@ -206,6 +212,7 @@ def read_and_translate(translator: inference.Translator,
                        chunk_size: Optional[int],
                        input_file: Optional[str] = None,
                        input_factors: Optional[List[str]] = None,
+                       input_timestamps: Optional[List[str]] = None,
                        input_is_json: bool = False) -> None:
     """
     Reads from either a file or stdin and translates each line, calling the output_handler with the result.
@@ -217,6 +224,7 @@ def read_and_translate(translator: inference.Translator,
     :param input_factors: Optional list of paths to files that contain source factors.
     :param input_is_json: Whether the input is in json format.
     """
+ 
     batch_size = translator.max_batch_size
     if chunk_size is None:
         if translator.max_batch_size == 1:
@@ -234,7 +242,8 @@ def read_and_translate(translator: inference.Translator,
     logger.info("Translating...")
 
     total_time, total_lines = 0.0, 0
-    for chunk in grouper(make_inputs(input_file, translator, input_is_json, input_factors), size=chunk_size):
+
+    for chunk in grouper(make_inputs(input_file, translator, input_is_json, input_factors, input_timestamps), size=chunk_size):
         chunk_time = translate(output_handler, chunk, translator)
         total_lines += len(chunk)
         total_time += chunk_time
@@ -257,6 +266,7 @@ def translate(output_handler: OutputHandler,
     :param translator: The translator that will be used for each line of input.
     :return: Total time taken.
     """
+ 
     tic = time.time()
     trans_outputs = translator.translate(trans_inputs)
     total_time = time.time() - tic

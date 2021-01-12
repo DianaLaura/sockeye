@@ -135,6 +135,7 @@ class TranslatorInput:
     __slots__ = ('sentence_id',
                  'tokens',
                  'factors',
+                 'has_timestamps',
                  'restrict_lexicon',
                  'constraints',
                  'avoid_list',
@@ -144,6 +145,7 @@ class TranslatorInput:
                  sentence_id: SentenceId,
                  tokens: Tokens,
                  factors: Optional[List[Tokens]] = None,
+                 has_timestamps: Optional[bool] = False,
                  restrict_lexicon: Optional[lexicon.TopKLexicon] = None,
                  constraints: Optional[List[Tokens]] = None,
                  avoid_list: Optional[List[Tokens]] = None,
@@ -151,10 +153,12 @@ class TranslatorInput:
         self.sentence_id = sentence_id
         self.tokens = tokens
         self.factors = factors
+        self.has_timestamps = has_timestamps
         self.restrict_lexicon = restrict_lexicon
         self.constraints = constraints
         self.avoid_list = avoid_list
         self.pass_through_dict = pass_through_dict
+       
 
     def __str__(self):
         return 'TranslatorInput(%s, %s, factors=%s, constraints=%s, avoid=%s)' \
@@ -203,14 +207,16 @@ class TranslatorInput:
         """
         :return: A new translator input with EOS appended to the tokens and factors.
         """
+
+                
         return TranslatorInput(sentence_id=self.sentence_id,
-                               tokens=self.tokens + [C.EOS_SYMBOL],
-                               factors=[factor + [C.EOS_SYMBOL] for factor in
-                                        self.factors] if self.factors is not None else None,
-                               restrict_lexicon=self.restrict_lexicon,
-                               constraints=self.constraints,
-                               avoid_list=self.avoid_list,
-                               pass_through_dict=self.pass_through_dict)
+                                tokens=self.tokens + [C.EOS_SYMBOL,100] if self.has_timestamps else self.tokens + [C.EOS_SYMBOL],
+                                factors=[factor + [C.EOS_SYMBOL] for factor in
+                                            self.factors] if self.factors is not None else None,
+                            restrict_lexicon=self.restrict_lexicon,
+                            constraints=self.constraints,
+                            avoid_list=self.avoid_list,
+                            pass_through_dict=self.pass_through_dict)
 
 
 class BadTranslatorInput(TranslatorInput):
@@ -233,6 +239,20 @@ def make_input_from_plain_string(sentence_id: SentenceId, string: str) -> Transl
     :return: A TranslatorInput.
     """
     return TranslatorInput(sentence_id, tokens=list(data_io.get_tokens(string)), factors=None)
+
+def make_input_from_string_with_timestamps(sentence_id: SentenceId, string: str, timestamps: str) -> TranslatorInput:
+    """
+    Returns a TranslatorInput object from a plain string.
+
+    :param sentence_id: Sentence id.
+    :param string: An input string.
+    :return: A TranslatorInput.
+    """
+    string = (sentence_id, string)
+    timestamps = (sentence_id, timestamps)
+    tokens = zip(string, timestamps)
+
+    return TranslatorInput(sentence_id, tokens=list(data_io.get_tokens_with_timestamps(tokens)), factors=None, has_timestamps=True)
 
 
 def make_input_from_json_string(sentence_id: SentenceId,

@@ -115,25 +115,30 @@ def test_concat_translations(lp_alpha: float, lp_beta: float, bp_weight: float):
     assert combined.beam_histories == expected_beam_histories
 
 
-@pytest.mark.parametrize("sentence_id, sentence, factors, chunk_size",
-                         [(1, "a test", None, 4),
-                          (1, "a test", None, 2),
-                          (1, "a test", None, 1),
-                          (0, "", None, 1),
-                          (1, "a test", [['h', 'l']], 4),
-                          (1, "a test", [['h', 'h'], ['x', 'y']], 1)])
-def test_translator_input(sentence_id, sentence, factors, chunk_size):
-    tokens = sentence.split()
-    trans_input = sockeye.inference.TranslatorInput(sentence_id=sentence_id, tokens=tokens, factors=factors)
+@pytest.mark.parametrize("sentence_id, sentence, factors, has_timestamps, chunk_size",
+                         [(1, "a test", None, False, 4),
+                          (1, "a test", None, False, 2),
+                          (1, "a test", None, False, 1),
+                          (0, "", None, False, 1),
+                          (1, "a test", [['h', 'l']], False, 4),
+                          (1, "a test", [['h', 'h'], ['x', 'y']], False, 1),
+                          (1, [["a", 1],  ["test", 5]] , None, True, 4)])
+def test_translator_input(sentence_id, sentence, factors, has_timestamps, chunk_size):
+    if has_timestamps:
+        tokens = sentence
+    else:
+        tokens = sentence.split()
+    trans_input = sockeye.inference.TranslatorInput(sentence_id=sentence_id, tokens=tokens, factors=factors, has_timestamps = has_timestamps)
 
     assert trans_input.sentence_id == sentence_id
     assert trans_input.tokens == tokens
     assert len(trans_input) == len(tokens)
     assert trans_input.factors == factors
+    assert trans_input.has_timestamps == has_timestamps
     if factors is not None:
         for factor in trans_input.factors:
             assert len(factor) == len(tokens)
-
+   
     chunked_inputs = list(trans_input.chunks(chunk_size))
     assert len(chunked_inputs) == ceil(len(tokens) / chunk_size)
     for chunk_id, chunk_input in enumerate(chunked_inputs):
@@ -358,6 +363,25 @@ def test_make_input_from_multiple_strings(strings):
     assert len(inp) == len(expected_tokens)
     assert inp.tokens == expected_tokens
     assert inp.factors == expected_factors
+
+@pytest.mark.parametrize("string, frames",
+                         [
+                             ["a b c", "1 3 7"],
+                           
+                         ])
+def test_make_input_from_string_with_timestamps(string, frames):
+    inp = sockeye.inference.make_input_from_string_with_timestamps(1, string, frames)
+
+
+    string = (1, string)
+    timestamps = (1, frames)
+    tokens = zip(string, timestamps)
+
+ 
+    expected_tokens = list(sockeye.data_io.get_tokens_with_timestamps(tokens))
+
+    assert len(inp) == len(expected_tokens)
+    assert inp.tokens == expected_tokens
 
 
 def test_get_best_word_indices_for_kth_hypotheses():

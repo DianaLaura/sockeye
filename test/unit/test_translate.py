@@ -24,6 +24,10 @@ import sockeye.translate
 TEST_DATA = "Test file line 1\n" \
             "Test file line 2\n"
 
+TEST_DATA_TIMESTAMPS = "1 3 4 7\n" \
+                        "1 2 5 8\n"
+                            
+
 
 def mock_open(*args, **kargs):
     # work-around for [MagicMock objects not being iterable](http://bugs.python.org/issue21258)
@@ -39,6 +43,7 @@ def test_translate_by_file():
     mock_translator.translate.return_value = ['', '']
     mock_translator.num_source_factors = 1
     mock_translator.max_batch_size = 1
+    mock_translator.has_source_timestamps = False
 
     mock_translator.nbest_size = 1
     sockeye.translate.read_and_translate(translator=mock_translator, output_handler=mock_output_handler,
@@ -55,7 +60,30 @@ def test_translate_by_file():
         # Ensure translate gets called once.  Input here will be a dummy mocked result, so we'll ignore it.
         assert mock_translator.translate.call_count == 1
 
+def test_translate_by_file_frame_embeddings():
+    mock_output_handler = unittest.mock.Mock(spec=sockeye.output_handler.OutputHandler)
+    mock_translator = unittest.mock.Mock(spec=sockeye.inference.Translator)
+    mock_translator.translate.return_value = ['', '']
+    mock_translator.num_source_factors = 1
+    mock_translator.max_batch_size = 1
+    mock_translator.nbest_size = 1
+    mock_translator.has_source_timestamps = True
+ 
 
+    with TemporaryDirectory() as temp:
+        input_filename = os.path.join(temp, 'input')
+        input_filename_time = os.path.join(temp, 'input_time')
+        with open(input_filename, 'w') as f:
+            with open(input_filename_time, 'w') as t:
+                f.write(TEST_DATA)
+                t.write(TEST_DATA_TIMESTAMPS)
+        
+        sockeye.translate.read_and_translate(translator=mock_translator, output_handler=mock_output_handler,
+                                             chunk_size=2, input_file=input_filename, input_factors=None, input_timestamps=input_filename_time)
+
+        # Ensure translate gets called once.  Input here will be a dummy mocked result, so we'll ignore it.
+        assert mock_translator.translate.call_count == 1
+    
 @unittest.mock.patch("sys.stdin", io.StringIO(TEST_DATA))
 def test_translate_by_stdin_chunk2():
     mock_output_handler = unittest.mock.Mock(spec=sockeye.output_handler.OutputHandler)
@@ -64,6 +92,7 @@ def test_translate_by_stdin_chunk2():
     mock_translator.num_source_factors = 1
     mock_translator.max_batch_size = 1
     mock_translator.nbest_size = 1
+    mock_translator.has_source_timestamps = False
     sockeye.translate.read_and_translate(translator=mock_translator,
                                          output_handler=mock_output_handler,
                                          chunk_size=2)

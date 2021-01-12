@@ -63,6 +63,7 @@ class ModelConfig(Config):
                  config_embed_target: encoder.EmbeddingConfig,
                  config_encoder: encoder.EncoderConfig,
                  config_decoder: decoder.DecoderConfig,
+                 has_source_timestamps: bool,
                  config_length_task: layers.LengthRatioConfig= None,
                  weight_tying_type: str = C.WEIGHT_TYING_SRC_TRG_SOFTMAX,
                  lhuc: bool = False,
@@ -76,12 +77,13 @@ class ModelConfig(Config):
         self.config_embed_target = config_embed_target
         self.config_encoder = config_encoder
         self.config_decoder = config_decoder
+        self.has_source_timestamps = has_source_timestamps
         self.config_length_task = config_length_task
         self.weight_tying_type = weight_tying_type
         self.lhuc = lhuc
         self.dtype = dtype
         self.intgemm_custom_lib = intgemm_custom_lib
-
+        
 
 class SockeyeModel(mx.gluon.Block):
     """
