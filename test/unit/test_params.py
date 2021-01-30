@@ -63,7 +63,7 @@ def mock_model():
                                                    max_seq_len_target=30)
     config = sockeye.model.ModelConfig(config_data=None, vocab_source_size=20, vocab_target_size=20,
                                        config_embed_source=config_embed, config_embed_target=config_embed,
-                                       config_encoder=config_encoder, config_decoder=config_encoder)
+                                       config_encoder=config_encoder, config_decoder=config_encoder, has_source_timestamps=False)
     model = sockeye.model.SockeyeModel(config=config)
     return model
 

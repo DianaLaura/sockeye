@@ -54,13 +54,16 @@ class Encoder(ABC, mx.gluon.HybridBlock):
     """
     Generic encoder interface.
     """
+   
 
     @abstractmethod
     def __init__(self, **kwargs):
         mx.gluon.HybridBlock.__init__(self, **kwargs)
 
-    def forward(self, inputs, valid_length):  # pylint: disable=arguments-differ 
-        return mx.gluon.HybridBlock.forward(self, inputs, valid_length)
+    def forward(self, inputs, valid_length):  # pylint: disable=arguments-differ
+       return mx.gluon.HybridBlock.forward(self, inputs, valid_length)
+        
+        
 
     def __call__(self, inputs, valid_length):  #pylint: disable=arguments-differ
         """
@@ -203,14 +206,13 @@ class Embedding(Encoder):
                             sparse_grad=self._use_sparse_grad)
 
         elif self.config.embedding_type == 'frames_source' and self.prefix == 'source_frames_embed_':
-            
             tokens, frames = F.split(data, num_outputs = 2, axis = 2)
-
+            
             frames = frames.squeeze(axis=2)
             frames = frames.squeeze(axis=2)
             tokens = tokens.squeeze(axis=2)
             tokens = tokens.squeeze(axis=2)
-         
+            
             weights = embed_weight.take(frames)
    
             weights = weights.reshape(shape=(-3, 0))

@@ -135,7 +135,7 @@ class TranslatorInput:
     __slots__ = ('sentence_id',
                  'tokens',
                  'factors',
-                 'has_timestamps',
+                 'has_source_timestamps',
                  'restrict_lexicon',
                  'constraints',
                  'avoid_list',
@@ -145,7 +145,7 @@ class TranslatorInput:
                  sentence_id: SentenceId,
                  tokens: Tokens,
                  factors: Optional[List[Tokens]] = None,
-                 has_timestamps: Optional[bool] = False,
+                 has_source_timestamps: Optional[bool] = False,
                  restrict_lexicon: Optional[lexicon.TopKLexicon] = None,
                  constraints: Optional[List[Tokens]] = None,
                  avoid_list: Optional[List[Tokens]] = None,
@@ -153,7 +153,7 @@ class TranslatorInput:
         self.sentence_id = sentence_id
         self.tokens = tokens
         self.factors = factors
-        self.has_timestamps = has_timestamps
+        self.has_source_timestamps = has_source_timestamps
         self.restrict_lexicon = restrict_lexicon
         self.constraints = constraints
         self.avoid_list = avoid_list
@@ -199,6 +199,7 @@ class TranslatorInput:
                                   tokens=self.tokens[i:i + chunk_size],
                                   factors=factors,
                                   restrict_lexicon=self.restrict_lexicon,
+                                  has_source_timestamps=self.has_source_timestamps,
                                   constraints=constraints,
                                   avoid_list=self.avoid_list,
                                   pass_through_dict=pass_through_dict)
@@ -210,10 +211,11 @@ class TranslatorInput:
 
                 
         return TranslatorInput(sentence_id=self.sentence_id,
-                                tokens=self.tokens + [C.EOS_SYMBOL,100] if self.has_timestamps else self.tokens + [C.EOS_SYMBOL],
+                                tokens=self.tokens + [(C.EOS_SYMBOL,100)] if self.has_source_timestamps else self.tokens + [C.EOS_SYMBOL],
                                 factors=[factor + [C.EOS_SYMBOL] for factor in
                                             self.factors] if self.factors is not None else None,
                             restrict_lexicon=self.restrict_lexicon,
+                            has_source_timestamps=self.has_source_timestamps,
                             constraints=self.constraints,
                             avoid_list=self.avoid_list,
                             pass_through_dict=self.pass_through_dict)
@@ -252,7 +254,7 @@ def make_input_from_string_with_timestamps(sentence_id: SentenceId, string: str,
     timestamps = (sentence_id, timestamps)
     tokens = zip(string, timestamps)
 
-    return TranslatorInput(sentence_id, tokens=list(data_io.get_tokens_with_timestamps(tokens)), factors=None, has_timestamps=True)
+    return TranslatorInput(sentence_id, tokens=list(data_io.get_tokens_with_timestamps(tokens)), factors=None, has_source_timestamps=True)
 
 
 def make_input_from_json_string(sentence_id: SentenceId,
@@ -815,6 +817,7 @@ class Translator:
         :param fill_up_batches: If True, underfilled batches are padded to Translator.max_batch_size.
         :return: List of translation results.
         """
+
         num_inputs = len(trans_inputs)
         translated_chunks = []  # type: List[IndexedTranslation]
 
@@ -924,11 +927,15 @@ class Translator:
                 lists, and list of phrases to avoid, and an NDArray of maximum output
                 lengths.
         """
+        
         batch_size = len(trans_inputs)
         lengths = [len(inp) for inp in trans_inputs]
         source_length = mx.nd.array(lengths, ctx=self.context, dtype=self.dtype)  # shape: (batch_size,)
         max_length = max(len(inp) for inp in trans_inputs)
-        source_npy = np.zeros((batch_size, max_length, self.num_source_factors), dtype=np.float32)
+        if trans_inputs[0].has_source_timestamps:
+            source_npy = np.zeros((batch_size, max_length, 2), dtype=np.float32)
+        else:
+            source_npy = np.zeros((batch_size, max_length, self.num_source_factors), dtype=np.float32)
 
         restrict_lexicon = None  # type: Optional[lexicon.TopKLexicon]
         raw_constraints = [None] * batch_size  # type: List[Optional[constrained.RawConstraintList]]
@@ -938,7 +945,10 @@ class Translator:
         for j, trans_input in enumerate(trans_inputs):
             num_tokens = len(trans_input)  # includes eos
             max_output_lengths.append(self._get_max_output_length(num_tokens))
-            source_npy[j, :num_tokens, 0] = data_io.tokens2ids(trans_input.tokens, self.source_vocabs[0])
+            if trans_input.has_source_timestamps:
+                source_npy[j, :num_tokens, :2] = data_io.tokens_frames2ids(trans_input.tokens, self.source_vocabs[0])
+            else:
+                source_npy[j, :num_tokens, 0] = data_io.tokens2ids(trans_input.tokens, self.source_vocabs[0])
 
             factors = trans_input.factors if trans_input.factors is not None else []
             num_factors = 1 + len(factors)
@@ -980,7 +990,8 @@ class Translator:
                 if any(self.unk_id in phrase for phrase in raw_avoid_list[j]):
                     logger.warning("Sentence %s: %s was found in the list of phrases to avoid; "
                                    "this may indicate improper preprocessing.", trans_input.sentence_id, C.UNK_SYMBOL)
-
+        if trans_inputs[0].has_source_timestamps:
+            source_npy = source_npy.reshape(batch_size, max_length, 2, 1)
         source = mx.nd.array(source_npy, ctx=self.context)
 
         return source, source_length, restrict_lexicon, raw_constraints, raw_avoid_list, \
@@ -1074,6 +1085,7 @@ class Translator:
 
         :return: Sequence of translations.
         """
+
         return self._get_best_from_beam(*self._beam_search(source,
                                                            source_length,
                                                            restrict_lexicon,

@@ -250,7 +250,7 @@ class GluonEarlyStoppingTrainer:
                     time_cost = time.time() - tic
                     self._create_checkpoint(checkpoint_decoder, time_cost, train_iter, validation_iter)
                 break
-
+    
             did_grad_step = self._step(batch=train_iter.next())
             checkpoint_up_to_date = checkpoint_up_to_date and not did_grad_step
 
@@ -315,6 +315,7 @@ class GluonEarlyStoppingTrainer:
             self.checkpoint_callback(self.state.checkpoint)
 
     def _forward_backward(self, batch: data_io.Batch):
+        
         """
         Performs forward-backward pass on a batch in data-parallel mode.
 
@@ -325,6 +326,7 @@ class GluonEarlyStoppingTrainer:
         batch = batch.split_and_load(ctx=self.context)
 
         # send sharded inputs to the backend
+
         for inputs, labels in batch.shards():
 
             self._parallel.put((inputs, labels))

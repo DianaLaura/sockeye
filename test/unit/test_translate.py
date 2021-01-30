@@ -79,7 +79,7 @@ def test_translate_by_file_frame_embeddings():
                 t.write(TEST_DATA_TIMESTAMPS)
         
         sockeye.translate.read_and_translate(translator=mock_translator, output_handler=mock_output_handler,
-                                             chunk_size=2, input_file=input_filename, input_factors=None, input_timestamps=input_filename_time)
+                                             chunk_size=2, input_file=input_filename, input_factors=None, input_frames=input_filename_time)
 
         # Ensure translate gets called once.  Input here will be a dummy mocked result, so we'll ignore it.
         assert mock_translator.translate.call_count == 1

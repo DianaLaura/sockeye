@@ -48,6 +48,7 @@ def prepare_data(args: argparse.Namespace):
     bucket_scaling = args.bucket_scaling
 
     source_paths = [args.source] + args.source_factors
+    source_timestamps = args.source_frame_embeddings
     source_factor_vocab_paths = [args.source_factor_vocabs[i] if i < len(args.source_factor_vocabs)
                                  else None for i in range(len(args.source_factors))]
     source_vocab_paths = [args.source_vocab] + source_factor_vocab_paths
@@ -70,6 +71,7 @@ def prepare_data(args: argparse.Namespace):
 
     source_vocabs, target_vocabs = vocab.load_or_create_vocabs(
         source_paths=source_paths,
+
         source_factor_vocab_same_as_source=args.source_factors_use_source_vocab,
         target_factor_vocab_same_as_target=args.target_factors_use_target_vocab,
         target_paths=target_paths,
@@ -83,6 +85,7 @@ def prepare_data(args: argparse.Namespace):
         pad_to_multiple_of=args.pad_vocab_to_multiple_of)
 
     data_io.prepare_data(source_fnames=source_paths,
+                         source_timestamps= source_timestamps,
                          target_fnames=target_paths,
                          source_vocabs=source_vocabs,
                          target_vocabs=target_vocabs,

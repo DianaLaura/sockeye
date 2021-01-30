@@ -94,6 +94,8 @@ def test_positional_embeddings():
     #TODO: Fix this test such that it can evaluate frame embeddings properly
 
     expected_frame_embedding = sockeye.layers.get_frame_embeddings(data_len, num_embed)
+    breakpoint()
+
     b = sockeye.layers.FrameEmbeddings(weight_type='frames_source',
                                             num_embed=num_embed,
                                             max_seq_len=max_seq_len,
@@ -102,7 +104,7 @@ def test_positional_embeddings():
                                             scale_down_positions=scale_down_positions,
                                             weight_init=None)
     b.initialize()
-    breakpoint()
+    
     # no steps
     out = b(data_timestamps, None).asnumpy()
     assert np.allclose(out[0], expected_frame_embedding)
@@ -115,8 +117,8 @@ def test_positional_embeddings():
     assert np.allclose(out[0], expected_fixed_embedding[2])
     assert np.allclose(out[1], expected_fixed_embedding[3])
 
-    """
 
+ """
 
 def test_output_layer():
     num_hidden = 32

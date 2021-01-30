@@ -95,11 +95,11 @@ def check_arg_compatibility(args: argparse.Namespace):
     
     #check if all conditions are met for frame embeddings
 
-    if args.source_frame_embeddings != []:
+    if args.source_frame_embeddings != [] and args.prepared_data is None:
        check_condition(args.transformer_positional_embedding_type == 'frames_source',
                         'To enable frame-embeddings, --transformer_positional_embedding_type'
                         'has to be frames_source')
-    if args.transformer_positional_embedding_type == 'frames_source':
+    if args.transformer_positional_embedding_type == 'frames_source' and args.prepared_data is None:
         check_condition(args.source_frame_embeddings != [], 
                         'To use the frames_source embedding type, a document with timestamps scaled as' 
                         'frames / integers must be provided under --source_frame_embeddings')
@@ -305,21 +305,19 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
                                        "with %s." % (C.TRAINING_ARG_SOURCE,
                                                      C.TRAINING_ARG_TARGET,
                                                      C.TRAINING_ARG_PREPARED_DATA)
+    
     if args.prepared_data is not None:
         utils.check_condition(args.source is None and args.target is None, either_raw_or_prepared_error_msg)
-        if not resume_training:
-            check_condition(len(args.val_source_frame_embeddings) == len(args.source_frame_embeddings),
-                        'Training data and validation data must have the same number of time stamp sources, but'
-                        'the amount of documents for --source_frame_embeddings and val_source_frame_embeddings differs')
+        
 
-            utils.check_condition(args.source_vocab is None and args.target_vocab is None,
-                                  "You are using a prepared data folder, which is tied to a vocabulary. "
-                                  "To change it you need to rerun data preparation with a different vocabulary.")
+        utils.check_condition(args.source_vocab is None and args.target_vocab is None,
+                                "You are using a prepared data folder, which is tied to a vocabulary. "
+                                "To change it you need to rerun data preparation with a different vocabulary.")
         train_iter, validation_iter, data_config, source_vocabs, target_vocabs = data_io.get_prepared_data_iters(
             prepared_data_dir=args.prepared_data,
             validation_sources=validation_sources,
             validation_targets=validation_targets,
-            validation_source_timestamps= args.validation_source_timestamps,
+            validation_source_timestamps=args.validation_source_frame_embeddings,
             shared_vocab=shared_vocab,
             batch_size=args.batch_size,
             batch_type=args.batch_type,
@@ -713,7 +711,7 @@ def create_model_config(args: argparse.Namespace,
     if args.length_task is not None:
         config_length_task = layers.LengthRatioConfig(num_layers=args.length_task_layers,
                                                       weight=args.length_task_weight)
-
+    
     model_config = model.ModelConfig(config_data=config_data,
                                      vocab_source_size=source_vocab_size,
                                      vocab_target_size=target_vocab_size,

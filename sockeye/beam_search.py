@@ -571,6 +571,8 @@ class BeamSearch(mx.gluon.Block):
                 array of accumulated length-normalized negative log-probs, hypotheses lengths,
                 predicted lengths of references (if any), constraints (if any).
         """
+
+      
         batch_size = source.shape[0]
         logger.debug("beam_search batch size: %d", batch_size)
 
@@ -661,7 +663,7 @@ class BeamSearch(mx.gluon.Block):
                                                   avoid_list=raw_avoid_list,
                                                   global_avoid_trie=self.global_avoid_trie)
             avoid_states.consume(best_word_indices[:, 0])  # constraints operate only on primary target factor
-
+        
         # (0) encode source sentence, returns a list
         model_states, estimated_reference_lengths = self._inference.encode_and_initialize(source, source_length)
         # repeat states to beam_size
@@ -763,7 +765,7 @@ class BeamSearch(mx.gluon.Block):
         all_best_hyp_indices = mx.nd.stack(*best_hyp_indices_list, axis=1)
         all_best_word_indices = mx.nd.stack(*best_word_indices_list, axis=2)
         constraints = [constraints[x] for x in best_hyp_indices.asnumpy()]
-
+    
         return all_best_hyp_indices.asnumpy(), \
                all_best_word_indices.asnumpy(), \
                scores_accumulated.asnumpy(), \

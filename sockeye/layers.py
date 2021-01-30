@@ -774,7 +774,7 @@ class FrameEmbeddings(mx.gluon.HybridBlock):
             frames = frames.squeeze(axis=2)
             tokens = tokens.squeeze(axis=2)
             tokens = tokens.squeeze(axis=2)
-         
+        
             new_weights = weight.take(frames)
    
             new_weights = new_weights.reshape(shape=(-3, 0))

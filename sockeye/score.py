@@ -68,13 +68,18 @@ def score(args: argparse.Namespace):
         if args.max_seq_len is not None:
             max_seq_len_source = min(args.max_seq_len[0] + C.SPACE_FOR_XOS, max_seq_len_source)
             max_seq_len_target = min(args.max_seq_len[1] + C.SPACE_FOR_XOS, max_seq_len_target)
+        
+  
 
         hybridize = not args.no_hybridization
-
         sources = [args.source] + args.source_factors
         sources = [str(os.path.abspath(source)) for source in sources]
         targets = [args.target] + args.target_factors
         targets = [str(os.path.abspath(target)) for target in targets]
+        if len(args.source_frame_embeddings) > 0:
+            source_timestamps = str(os.path.abspath(args.source_frame_embeddings[0]))
+        else:
+            source_timestamps = args.source_frame_embeddings
 
         check_condition(len(targets) == model.num_target_factors,
                         "Number of target inputs/factors provided (%d) does not match number of target factors "
@@ -85,6 +90,7 @@ def score(args: argparse.Namespace):
             targets=targets,
             source_vocabs=source_vocabs,
             target_vocabs=target_vocabs,
+            source_timestamps=source_timestamps,
             batch_size=args.batch_size,
             max_seq_len_source=max_seq_len_source,
             max_seq_len_target=max_seq_len_target)

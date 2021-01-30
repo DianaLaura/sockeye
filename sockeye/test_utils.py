@@ -84,17 +84,28 @@ def generate_digits_time_file(source_path: str,
         for _ in range(line_count_empty):
             all_digits.append([])
         random_gen.shuffle(all_digits)
+        
         for digits in all_digits:
+            
             timestamps = []
             time = 0
      
             while len(timestamps) < len(digits):
                 timestamps.append(str(time))
-                time += 1
+                time += random.randint(8, 50)
+            
+            if digits != []:
+                timestamps.append(C.SEP_SYMBOL)
+                digits.append(C.SEP_SYMBOL)
+                time = 0
+                digits2 = [random_gen.choice(_DIGITS) for _ in range(random_gen.randint(1, int(len(digits))))]
+                for i in range(0, len(digits2)):
+                    timestamps.append(str(time))
+                    time += random.randint(8, 50)
+                    digits.append(str(digits2[i]))
+                
             print(C.TOKEN_SEPARATOR.join(digits), file=source_out)
             print(C.TOKEN_SEPARATOR.join(timestamps), file=time_out)
-            if sort_target:
-                digits.sort()
             print(C.TOKEN_SEPARATOR.join(digits), file=target_out)
 
 
@@ -230,7 +241,7 @@ def tmp_digits_timestamp_dataset(prefix: str,
                              line_count_empty=train_line_count_empty, sort_target=sort_target, seed=seed_train)
         generate_digits_time_file(dev_source_path, dev_target_path, dev_source_time_path, dev_line_count, dev_max_length, sort_target=sort_target,
                              seed=seed_dev)
-        generate_digits_time_file(test_source_path, test_target_path,test_source_path, test_line_count, test_max_length,
+        generate_digits_time_file(test_source_path, test_target_path,test_source_time_path, test_line_count, test_max_length,
                              line_count_empty=test_line_count_empty, sort_target=sort_target, seed=seed_dev)
         data = {'work_dir': work_dir,
                 'train_source': train_source_path,
@@ -290,6 +301,9 @@ DEV_WITH_SOURCE_FACTORS_COMMON = " --validation-source-factors {dev_source_facto
 TRAIN_WITH_TARGET_FACTORS_COMMON = " --target-factors {target_factors}"
 DEV_WITH_TARGET_FACTORS_COMMON = " --validation-target-factors {dev_target_factors}"
 
+TRAIN_WITH_FRAME_EMBEDDINGS = " --source-frame-embeddings {train_source_timestamps}"
+DEV_WITH_FRAME_EMBEDDINGS = " --validation-source-frame-embeddings {dev_source_timestamps}"
+
 TRAIN_PARAMS_PREPARED_DATA_COMMON = "--use-cpu --max-seq-len {max_len} --prepared-data {prepared_data}" \
                                      " --validation-source {dev_source} --validation-target {dev_target} " \
                                      "--output {model}"
@@ -299,6 +313,7 @@ TRANSLATE_PARAMS_COMMON = "--use-cpu --models {model} --input {input} --output {
 
 TRANSLATE_WITH_FACTORS_COMMON = " --input-factors {input_factors}"
 
+TRANSLATE_WITH_FRAME_EMBEDDINGS = " --input-frames {input_frames}"
 TRANSLATE_PARAMS_RESTRICT = "--restrict-lexicon {lexicon} --restrict-lexicon-topk {topk}"
 
 SCORE_PARAMS_COMMON = "--use-cpu --model {model} --source {source} --target {target} --output {output} "
@@ -335,6 +350,8 @@ def run_train_translate(train_params: str,
                                                                    train_target=data['train_target'],
                                                                    output=data['train_prepared'],
                                                                    max_len=max_seq_len))
+        if 'train_source_timestamps' in data:
+            prepare_params += TRAIN_WITH_FRAME_EMBEDDINGS.format(train_source_timestamps="".join(data['train_source_timestamps']))                                                        
         if 'train_source_factors' in data:
             prepare_params += TRAIN_WITH_SOURCE_FACTORS_COMMON.format(source_factors=" ".join(data['train_source_factors']))
         if 'train_target_factors' in data:
@@ -355,6 +372,9 @@ def run_train_translate(train_params: str,
                                                                             max_len=max_seq_len),
                                    train_params)
 
+        if 'dev_source_timestamps' in data:
+            params += DEV_WITH_FRAME_EMBEDDINGS.format(dev_source_timestamps="".join(data['dev_source_timestamps'])) 
+
         if 'dev_source_factors' in data:
             params += DEV_WITH_SOURCE_FACTORS_COMMON.format(dev_source_factors=" ".join(data['dev_source_factors']))
         if 'dev_target_factors' in data:
@@ -374,11 +394,14 @@ def run_train_translate(train_params: str,
                                                               max_len=max_seq_len,
                                                               seed=seed),
                                    train_params)
-
+        if 'train_source_timestamps' in data:
+            params += TRAIN_WITH_FRAME_EMBEDDINGS.format(train_source_timestamps="".join(data['train_source_timestamps'])) 
         if 'train_source_factors' in data:
             params += TRAIN_WITH_SOURCE_FACTORS_COMMON.format(source_factors=" ".join(data['train_source_factors']))
         if 'train_target_factors' in data:
             params += TRAIN_WITH_TARGET_FACTORS_COMMON.format(target_factors=" ".join(data['train_target_factors']))
+        if 'dev_source_timestamps' in data:
+            params += DEV_WITH_FRAME_EMBEDDINGS.format(dev_source_timestamps="".join(data['dev_source_timestamps'])) 
         if 'dev_source_factors' in data:
             params += DEV_WITH_SOURCE_FACTORS_COMMON.format(dev_source_factors=" ".join(data['dev_source_factors']))
         if 'dev_target_factors' in data:
@@ -408,6 +431,9 @@ def run_train_translate(train_params: str,
                                                               input=data['test_source'],
                                                               output=data['test_output']),
                                translate_params)
+    
+    if 'test_source_timestamps' in data:
+        params += TRANSLATE_WITH_FRAME_EMBEDDINGS.format(input_frames="".join(data['test_source_timestamps']))
 
     if 'test_source_factors' in data:
         params += TRANSLATE_WITH_FACTORS_COMMON.format(input_factors=" ".join(data['test_source_factors']))
@@ -443,6 +469,9 @@ def run_translate_restrict(data: Dict[str, Any], translate_params: str) -> Dict[
                                                                  output=out_path),
                                   translate_params,
                                   TRANSLATE_PARAMS_RESTRICT.format(lexicon=data['lexicon'], topk=1))
+
+    if 'test_source_timestamps' in data:
+        params += TRANSLATE_WITH_FRAME_EMBEDDINGS.format(input_frames="".join(data['test_source_timestamps']))
     if 'test_source_factors' in data:
         params += TRANSLATE_WITH_FACTORS_COMMON.format(input_factors=" ".join(data['test_source_factors']))
     with patch.object(sys, "argv", params.split()):

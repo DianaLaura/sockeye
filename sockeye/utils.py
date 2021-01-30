@@ -218,7 +218,13 @@ def get_tokens_with_timestamps(tokens: str) -> Iterator[str]:
             if timeline[i] == C.SEP_SYMBOL:
                 timeline[i] = C.SEP_ID
             yield (tokenline[i],timeline[i])
-            
+
+def get_prepared_tokens_with_timestamps(line: str) -> Iterator[str]:
+ 
+    breakpoint()
+    for token in line.rstrip().split('] ['):
+        if len(token) > 0:
+            yield token
 
 
 def is_gzip_file(filename: str) -> bool:

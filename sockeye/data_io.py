@@ -22,6 +22,7 @@ import multiprocessing
 import os
 import pickle
 import random
+import re
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from contextlib import ExitStack
@@ -35,7 +36,7 @@ from . import config
 from . import constants as C
 from . import horovod_mpi
 from . import vocab
-from .utils import check_condition, smart_open, get_tokens, get_tokens_with_timestamps, OnlineMeanAndVariance
+from .utils import check_condition, smart_open, get_tokens, get_tokens_with_timestamps, get_prepared_tokens_with_timestamps, OnlineMeanAndVariance
 
 logger = logging.getLogger(__name__)
 
@@ -281,13 +282,14 @@ def analyze_sequence_lengths(sources: List[str],
                              max_seq_len_source: int,
                              max_seq_len_target: int) -> 'LengthStatistics':
 
+
     if len(source_timestamps) > 0 :
-        train_sources_sentences, train_targets_sentences = create_sequence_readers_time(sources, targets,source_timestamps,
+        train_sources_sentences, train_targets_sentences = create_sequence_readers_time(sources, targets, source_timestamps,
                                                                                 vocab_sources, vocab_targets)
     else:
         train_sources_sentences, train_targets_sentences = create_sequence_readers(sources, targets,
                                                                                 vocab_sources, vocab_targets)
-
+    
     length_statistics = calculate_length_statistics(train_sources_sentences, train_targets_sentences,
                                                     max_seq_len_source, max_seq_len_target)
 
@@ -324,6 +326,7 @@ class DataStatisticsAccumulator:
                  buckets: List[Tuple[int, int]],
                  vocab_source: Optional[Dict[str, int]],
                  vocab_target: Dict[str, int],
+                 has_source_timestamps: bool,
                  length_ratio_mean: float,
                  length_ratio_std: float) -> None:
         self.buckets = buckets
@@ -337,6 +340,7 @@ class DataStatisticsAccumulator:
             self.unk_id_source = None
             self.size_vocab_source = 0
         self.unk_id_target = vocab_target[C.UNK_SYMBOL]
+        self.has_source_timestamps = has_source_timestamps
         self.size_vocab_target = len(vocab_target)
         self.num_sents = 0
         self.num_discarded = 0
@@ -353,6 +357,7 @@ class DataStatisticsAccumulator:
                       source: List[int],
                       target: List[int],
                       bucket_idx: Optional[int]):
+
         if bucket_idx is None:
             self.num_discarded += 1
             return
@@ -391,6 +396,7 @@ class DataStatisticsAccumulator:
                               num_discarded=self.num_discarded,
                               num_tokens_source=self.num_tokens_source,
                               num_tokens_target=self.num_tokens_target,
+                              has_source_timestamps = self.has_source_timestamps,
                               num_unks_source=self.num_unks_source,
                               num_unks_target=self.num_unks_target,
                               max_observed_len_source=self.max_observed_len_source,
@@ -430,21 +436,28 @@ def shard_data(source_fnames: List[str],
     :return: Tuple of source (and source factor) file names, target (and target factor) file names
              and statistics for each shard, as well as global statistics.
     """
-    os.makedirs(output_prefix, exist_ok=True)
+    
+    os.makedirs(output_prefix, exist_ok=True) 
     sources_shard_fnames = [[os.path.join(output_prefix, C.SHARD_SOURCE % i) + ".%d" % f for i in range(num_shards)]
                             for f in range(len(source_fnames))]
+    
+     
     targets_shard_fnames = [[os.path.join(output_prefix, C.SHARD_TARGET % i) + ".%d" % f for i in range(num_shards)]
                             for f in range(len(target_fnames))]
-
-    data_stats_accumulator = DataStatisticsAccumulator(buckets, source_vocabs[0], target_vocabs[0],
+    if len(source_timestamps) > 0:
+        has_source_timestamps = True
+    else:
+        has_source_timestamps = False
+    data_stats_accumulator = DataStatisticsAccumulator(buckets, source_vocabs[0], target_vocabs[0], has_source_timestamps,
                                                        length_ratio_mean, length_ratio_std)
     per_shard_stat_accumulators = [
-        DataStatisticsAccumulator(buckets, source_vocabs[0], target_vocabs[0], length_ratio_mean,
+        DataStatisticsAccumulator(buckets, source_vocabs[0], target_vocabs[0], has_source_timestamps, length_ratio_mean,
                                   length_ratio_std) for shard_idx in range(num_shards)]
 
     with ExitStack() as exit_stack:
         sources_shards = [[exit_stack.enter_context(smart_open(f, mode="wt")) for f in sources_shard_fnames[i]] for i in
                           range(len(source_fnames))]
+   
         targets_shards = [[exit_stack.enter_context(smart_open(f, mode="wt")) for f in targets_shard_fnames[i]] for i in
                           range(len(target_fnames))]
         if len(source_timestamps) > 0 :
@@ -473,6 +486,7 @@ def shard_data(source_fnames: List[str],
                 print(ids2strids(line), file=sources_shards[i][random_shard_index])
             for i, line in enumerate(targets):
                 print(ids2strids(line), file=targets_shards[i][random_shard_index])
+
 
     per_shard_stats = [shard_stat_accumulator.statistics for shard_stat_accumulator in per_shard_stat_accumulators]
 
@@ -528,19 +542,21 @@ class RawParallelDatasetLoader:
     def load(self,
              source_iterables: Sequence[Iterable],
              target_iterables: Sequence[Iterable],
-             num_samples_per_bucket: List[int]) -> 'ParallelDataSet':
+             num_samples_per_bucket: List[int],
+             has_source_timestamps: Optional[bool] = False) -> 'ParallelDataSet':
 
         assert len(num_samples_per_bucket) == len(self.buckets)
         num_source_factors = len(source_iterables)
         num_target_factors = len(target_iterables)
 
-
-        if source_iterables[0].timestamps != []:
+    
+        if hasattr(source_iterables[0], 'timestamps') and (source_iterables[0].timestamps != [] or has_source_timestamps):
             data_source = [np.full((num_samples, source_len, num_source_factors, 2), self.pad_id, dtype=self.dtype)
                     for (source_len, target_len), num_samples in zip(self.buckets, num_samples_per_bucket)]
         else:
             data_source = [np.full((num_samples, source_len, num_source_factors), self.pad_id, dtype=self.dtype)
                         for (source_len, target_len), num_samples in zip(self.buckets, num_samples_per_bucket)]
+        
         data_target = [np.full((num_samples, target_len + 1, num_target_factors), self.pad_id, dtype=self.dtype)
                        for (source_len, target_len), num_samples in zip(self.buckets, num_samples_per_bucket)]
         
@@ -553,9 +569,10 @@ class RawParallelDatasetLoader:
         num_pad_target = 0
 
         # Bucket sentences as padded np arrays
-        if source_iterables[0].timestamps != []:
+   
+        if hasattr(source_iterables[0], 'timestamps') and (source_iterables[0].timestamps != [] or has_source_timestamps):
             for sentno, (sources, targets) in enumerate(parallel_iter(source_iterables,
-                                                                  target_iterables, skip_blanks=self.skip_blanks), 1):
+                                                                target_iterables, has_source_timestamps, skip_blanks=self.skip_blanks), 1):
             
                 sources = [[] if stream is None else stream for stream in sources]
                 targets = [[] if stream is None else stream for stream in targets]
@@ -610,7 +627,7 @@ class RawParallelDatasetLoader:
         else:
 
             for sentno, (sources, targets) in enumerate(parallel_iter(source_iterables,
-                                                                    target_iterables, skip_blanks=self.skip_blanks), 1):
+                                                                    target_iterables, has_source_timestamps, skip_blanks=self.skip_blanks), 1):
 
                 sources = [[] if stream is None else stream for stream in sources]
                 targets = [[] if stream is None else stream for stream in targets]
@@ -653,8 +670,8 @@ class RawParallelDatasetLoader:
                             num_pad_source / num_tokens_source * 100,
                             num_pad_target / num_tokens_target * 100)
             
-        return ParallelDataSet(data_source, data_target)
-
+        return ParallelDataSet(data_source, data_target, has_source_timestamps)
+   
 
 def get_num_shards(num_samples: int, samples_per_shard: int, min_num_shards: int) -> int:
     """
@@ -669,7 +686,7 @@ def get_num_shards(num_samples: int, samples_per_shard: int, min_num_shards: int
 
 
 def save_shard(shard_idx: int, data_loader: RawParallelDatasetLoader,
-               shard_sources: List[str], shard_targets: List[str], shard_timestamps: List[str],
+               shard_sources: List[str], shard_targets: List[str],
                shard_stats: 'DataStatistics', output_prefix: str, keep_tmp_shard_files: bool):
     """
     Load shard source and target data files into NDArrays and save to disk.
@@ -683,11 +700,13 @@ def save_shard(shard_idx: int, data_loader: RawParallelDatasetLoader,
     :param output_prefix: The prefix of the output file name.
     :param keep_tmp_shard_files: Keep the sources/target files when it is True otherwise delete them.
     """
-    sources_sentences = [SequenceReader(s, shard_timestamps) for s in shard_sources]
-    target_timestamps=[]
-    targets_sentences = [SequenceReader(s, target_timestamps) for s in shard_targets]
+    sources_sentences = [SequenceReader(s) for s in shard_sources]
 
-    dataset = data_loader.load(sources_sentences, targets_sentences, shard_stats.num_sents_per_bucket)
+    targets_sentences = [SequenceReader(s) for s in shard_targets]
+
+
+
+    dataset = data_loader.load(sources_sentences, targets_sentences, shard_stats.num_sents_per_bucket, shard_stats.has_source_timestamps)
     shard_fname = os.path.join(output_prefix, C.SHARD_NAME % shard_idx)
     shard_stats.log()
     logger.info("Writing '%s'", shard_fname)
@@ -740,6 +759,7 @@ def prepare_data(source_fnames: List[str],
     num_shards = get_num_shards(length_statistics.num_sents, samples_per_shard, min_num_shards)
     logger.info("%d samples will be split into %d shard(s) (requested samples/shard=%d, min_num_shards=%d)."
                 % (length_statistics.num_sents, num_shards, samples_per_shard, min_num_shards))
+    
     shards, data_statistics = shard_data(source_fnames=source_fnames,
                                          target_fnames=target_fnames,
                                          source_timestamps=source_timestamps,
@@ -759,9 +779,10 @@ def prepare_data(source_fnames: List[str],
     # 3. convert each shard to serialized ndarrays
     if max_processes == 1:
         logger.info("Processing shards sequentially.")
+        
         # Process shards sequentially without using multiprocessing
-        for shard_idx, (shard_sources, shard_targets, shard_timestamps, shard_stats) in enumerate(shards):
-            save_shard(shard_idx, data_loader, shard_sources, shard_targets, shard_timestamps,
+        for shard_idx, (shard_sources, shard_targets, shard_stats) in enumerate(shards):
+            save_shard(shard_idx, data_loader, shard_sources, shard_targets,
                        shard_stats, output_prefix, keep_tmp_shard_files)
     else:
         logger.info("Processing shards using %s processes.", max_processes)
@@ -808,6 +829,7 @@ def prepare_data(source_fnames: List[str],
 
 def get_data_statistics(source_readers: Optional[Sequence[Iterable]],
                         target_readers: Sequence[Iterable],
+                        has_source_timestamps: bool,
                         buckets: List[Tuple[int, int]],
                         length_ratio_mean: float,
                         length_ratio_std: float,
@@ -816,6 +838,7 @@ def get_data_statistics(source_readers: Optional[Sequence[Iterable]],
     data_stats_accumulator = DataStatisticsAccumulator(buckets,
                                                        source_vocabs[0] if source_vocabs is not None else None,
                                                        target_vocabs[0],
+                                                       has_source_timestamps,
                                                        length_ratio_mean,
                                                        length_ratio_std)
 
@@ -860,13 +883,16 @@ def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
                                                                                             validation_targets,
                                                                                             validation_source_timestamps,
                                                                                             source_vocabs, target_vocabs)
+        has_source_timestamps = True
     else:
         validation_sources_sentences, validation_targets_sentences = create_sequence_readers(validation_sources,
                                                                                             validation_targets,
                                                                                             source_vocabs, target_vocabs)
+        has_source_timestamps = False
 
     validation_data_statistics = get_data_statistics(validation_sources_sentences,
                                                      validation_targets_sentences,
+                                                     has_source_timestamps,
                                                      buckets,
                                                      validation_length_statistics.length_ratio_mean,
                                                      validation_length_statistics.length_ratio_std,
@@ -926,7 +952,6 @@ def get_prepared_data_iters(prepared_data_dir: str,
                                                             "of the prepared data (e.g. for weight tying). "
                                                             "Specify or omit %s consistently when training "
                                                             "and preparing the data." % C.VOCAB_ARG_SHARED_VOCAB)
-
     source_vocabs = vocab.load_source_vocabs(prepared_data_dir)
     target_vocabs = vocab.load_target_vocabs(prepared_data_dir)
 
@@ -1050,13 +1075,13 @@ def get_training_data_iters(sources: List[str],
                                                                                                max_seq_len_target)]
     if len(source_timestamps) > 0 :
         sources_sentences, targets_sentences = create_sequence_readers_time(sources, targets, source_timestamps, source_vocabs, target_vocabs)
-
+        has_source_timestamps = True
     else:
         sources_sentences, targets_sentences = create_sequence_readers(sources, targets, source_vocabs, target_vocabs)
-
+        has_source_timestamps = False
     # Pass 2: Get data statistics and determine the number of data points for each bucket.
 
-    data_statistics = get_data_statistics(sources_sentences, targets_sentences, buckets,
+    data_statistics = get_data_statistics(sources_sentences, targets_sentences, has_source_timestamps, buckets,
                                           length_statistics.length_ratio_mean, length_statistics.length_ratio_std,
                                           source_vocabs, target_vocabs)
 
@@ -1155,6 +1180,7 @@ def get_scoring_data_iters(sources: List[str],
                                                 sources=sources,
                                                 targets=targets,
                                                 source_timestamps=source_timestamps,
+                                                has_source_timestamps = False,
                                                 source_vocabs=source_vocabs,
                                                 target_vocabs=target_vocabs,
                                                 bucket=bucket,
@@ -1186,6 +1212,7 @@ class DataStatistics(config.Config):
                  num_discarded,
                  num_tokens_source,
                  num_tokens_target,
+                 has_source_timestamps: bool,
                  num_unks_source,
                  num_unks_target,
                  max_observed_len_source,
@@ -1203,6 +1230,7 @@ class DataStatistics(config.Config):
         self.num_discarded = num_discarded
         self.num_tokens_source = num_tokens_source
         self.num_tokens_target = num_tokens_target
+        self.has_source_timestamps = has_source_timestamps
         self.num_unks_source = num_unks_source
         self.num_unks_target = num_unks_target
         self.max_observed_len_source = max_observed_len_source
@@ -1304,6 +1332,20 @@ def read_content(path: str, limit: Optional[int] = None) -> Iterator[List[str]]:
                 break
             yield list(get_tokens(line))
 
+def read_prepared_content_with_timestamps(path: str, limit: Optional[int] = None) -> Iterator[List[str]]:
+    """
+    Returns a list of tokens for each line in path up to a limit.
+
+    :param path: Path to files containing sentences.
+    :param limit: How many lines to read from path.
+    :return: Iterator over lists of words.
+    """
+    with smart_open(path) as indata:
+        for i, line in enumerate(indata):
+            if limit is not None and i == limit:
+                break
+            yield list(get_prepared_tokens_with_timestamps(line))
+
 def read_content_time(tokens: str, timestamps: str, limit: Optional[int] = None) -> Iterator[List[str]]:
     """
     Returns a list of tokens for each line in path up to a limit.
@@ -1346,10 +1388,16 @@ def tokens_frames2ids(tokens_frames: Iterable[str], vocab: Dict[str, int]) -> Li
     :param vocab: Vocabulary (containing UNK symbol).
     :return: List of word ids.
     """
+
     
     unzipped_tokens_frames = list(zip(*tokens_frames))
-    tokens = unzipped_tokens_frames[0]
-    timestamps = unzipped_tokens_frames[1]
+    if unzipped_tokens_frames == []:
+        tokens = []
+        timestamps = []
+    else:
+        tokens = unzipped_tokens_frames[0]
+        timestamps = unzipped_tokens_frames[1]
+    
 
 
     return [[vocab.get(tokens[w], vocab[C.UNK_SYMBOL]), int(timestamps[w])] for w in range (0, len(tokens))]
@@ -1364,15 +1412,18 @@ def strids2ids(tokens: Iterable[str]) -> List[int]:
     """
     return list(map(int, tokens))
 
-def frames2ids(tokens: Iterable[str], frames: Iterable[str]) -> List[int]:
+def frames2ids(tokens: Iterable[str]) -> List[int]:
     """
     Returns sequence of integer ids given a sequence of string ids and a sequence of frame ids.
 
-    :param tokens: List of integer tokens.
-    :param frames: List of timestamps given as number of frames
+    :param tokens: List of integer tokens and timestamps
     :return: List of word ids.
     """
-    return list(map(int, tokens, frames))
+   
+    sent = ''.join(tokens)
+    sent = re.sub('\]\[', '],[', sent)
+
+    return list(eval(sent))
 
 def ids2strids(ids: Iterable[int]) -> str:
     """
@@ -1416,7 +1467,8 @@ class SequenceReader:
     def __init__(self,
                  path: str,
                  vocabulary: Optional[vocab.Vocab] = None,
-                 timestamps: Optional[str] = [],
+                 timestamps: str = [],
+                 has_source_timestamps: bool = False,
                  add_bos: bool = False,
                  add_eos: bool = False,
                  limit: Optional[int] = None) -> None:
@@ -1426,6 +1478,7 @@ class SequenceReader:
         except (IndexError, KeyError):
             self.timestamps=[]
         self.vocab = vocabulary
+        self.has_source_timestamps = has_source_timestamps
         self.bos_id = None
         self.eos_id = None
 
@@ -1447,7 +1500,7 @@ class SequenceReader:
                 if self.vocab is not None:
                     sequence = tokens_frames2ids(tokens, self.vocab)
                 else:
-                    sequence = frames2ids(tokens, self.vocab)
+                    sequence = frames2ids(tokens)
 
                 if len(sequence) == 0:
                     yield None
@@ -1457,13 +1510,18 @@ class SequenceReader:
                 if self.add_eos:
                     sequence.append([self.eos_id, 10_000])
                 yield sequence
-
+      
         else:
+         
             for tokens in read_content(self.path, self.limit):
                 if self.vocab is not None:
                     sequence = tokens2ids(tokens, self.vocab)
                 else:
-                    sequence = strids2ids(tokens)
+                    try:
+                        sequence = strids2ids(tokens)
+                    except ValueError:
+                        sequence = frames2ids(tokens)
+                        self.has_source_timestamps = True
                 if len(sequence) == 0:
                     yield None
                     continue
@@ -1509,14 +1567,14 @@ def create_sequence_readers_time(sources: List[str], targets: List[str],
     :param vocab_targets: The target vocabularies.
     :return: The source sequence readers and the target reader.
     """
-    source_sequence_readers = []
 
-    source_sequence_readers = [SequenceReader(source, vocab, source_timestamps, add_eos=True) for source, vocab, source_timestamp in
+
+    source_sequence_readers = [SequenceReader(source, vocab, source_timestamps, has_source_timestamps=True, add_eos=True) for source, vocab, source_timestamp in
                                 zip(sources, vocab_sources, source_timestamps)]
     
 
-    target_timestamps = []
-    target_sequence_readers = [SequenceReader(target, vocab, target_timestamps, add_bos=True) for target, vocab in
+    
+    target_sequence_readers = [SequenceReader(target, vocab, add_bos=True) for target, vocab in
                                zip(targets, vocab_targets)]
 
     return source_sequence_readers, target_sequence_readers
@@ -1524,6 +1582,7 @@ def create_sequence_readers_time(sources: List[str], targets: List[str],
 
 def parallel_iter(source_iterables: Sequence[Iterable[Optional[Any]]],
                   target_iterables: Sequence[Iterable[Optional[Any]]],
+                  has_source_timestamps: bool = False,
                   skip_blanks: bool = True):
     """
     Creates iterators over parallel iterables by calling iter() on the iterables
@@ -1664,12 +1723,14 @@ class ParallelDataSet:
 
     def __init__(self,
                  source: List[mx.nd.array],
-                 target: List[mx.nd.array]) -> None:
+                 target: List[mx.nd.array],
+                 has_source_timestamps: Optional[bool] = False) -> None:
         check_condition(len(source) == len(target),
                         "Number of buckets for source/target do not match: %d/%d." % (len(source), len(target)))
 
         self.source = source
         self.target = target
+        self.has_source_timestamps = has_source_timestamps
     
     
 
@@ -1918,6 +1979,7 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
                  sources: List[str],
                  targets: List[str],
                  source_timestamps: List[str],
+                 has_source_timestamps: bool,
                  source_vocabs: List[vocab.Vocab],
                  target_vocabs: List[vocab.Vocab],
                  bucket: Tuple[int, int],
@@ -1937,9 +1999,11 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
         if len(source_timestamps) > 0 :
             self.sources_sentences, self.targets_sentences = create_sequence_readers_time(sources, targets, source_timestamps,
                                                                                        source_vocabs, target_vocabs)
+            self.has_source_timestamps = True
         else:
             self.sources_sentences, self.targets_sentences = create_sequence_readers(sources, targets,
                                                                                        source_vocabs, target_vocabs)
+            self.has_source_timestamps = False
         self.sources_iters = [iter(s) for s in self.sources_sentences]
         self.targets_iters = [iter(s) for s in self.targets_sentences]
         self.max_len_source, self.max_len_target = max_lens

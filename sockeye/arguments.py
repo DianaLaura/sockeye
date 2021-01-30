@@ -1181,6 +1181,14 @@ def add_inference_args(params):
                                help='List of input files containing additional source factors,'
                                     'each token-parallel to the source. Default: %(default)s.')
 
+    decode_params.add_argument(C.INFERENCE_ARG_SOURCE_FRAME_EMBEDDINGS,
+                               required=False,
+                               nargs='+',
+                               type=regular_file(),
+                               default=None,
+                               help='Input file containing timestamps / frame-embeddings,'
+                                    'token-parallel to the source. Default: %(default)s.')
+
     decode_params.add_argument('--json-input',
                                action='store_true',
                                default=False,
