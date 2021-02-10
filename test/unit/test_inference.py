@@ -115,7 +115,7 @@ def test_concat_translations(lp_alpha: float, lp_beta: float, bp_weight: float):
     assert combined.beam_histories == expected_beam_histories
 
 
-@pytest.mark.parametrize("sentence_id, sentence, factors, has_timestamps, chunk_size",
+@pytest.mark.parametrize("sentence_id, sentence, factors, has_source_timestamps, chunk_size",
                          [(1, "a test", None, False, 4),
                           (1, "a test", None, False, 2),
                           (1, "a test", None, False, 1),
@@ -123,18 +123,18 @@ def test_concat_translations(lp_alpha: float, lp_beta: float, bp_weight: float):
                           (1, "a test", [['h', 'l']], False, 4),
                           (1, "a test", [['h', 'h'], ['x', 'y']], False, 1),
                           (1, [["a", 1],  ["test", 5]] , None, True, 4)])
-def test_translator_input(sentence_id, sentence, factors, has_timestamps, chunk_size):
-    if has_timestamps:
+def test_translator_input(sentence_id, sentence, factors, has_source_timestamps, chunk_size):
+    if has_source_timestamps:
         tokens = sentence
     else:
         tokens = sentence.split()
-    trans_input = sockeye.inference.TranslatorInput(sentence_id=sentence_id, tokens=tokens, factors=factors, has_timestamps = has_timestamps)
+    trans_input = sockeye.inference.TranslatorInput(sentence_id=sentence_id, tokens=tokens, factors=factors, has_source_timestamps = has_source_timestamps)
 
     assert trans_input.sentence_id == sentence_id
     assert trans_input.tokens == tokens
     assert len(trans_input) == len(tokens)
     assert trans_input.factors == factors
-    assert trans_input.has_timestamps == has_timestamps
+    assert trans_input.has_source_timestamps == has_source_timestamps
     if factors is not None:
         for factor in trans_input.factors:
             assert len(factor) == len(tokens)

@@ -390,6 +390,7 @@ def _test_args(test_params, expected_params, args_func):
         parsed_params = test_parser.parse_args(test_params.split())
     finally:
         _delete_argument_values_that_must_be_files_or_dirs(created)
+    #fails because there is one more argument now; where are the parameters of this test declared?
     assert dict(vars(parsed_params)) == expected_params
 
 

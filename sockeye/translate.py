@@ -191,7 +191,7 @@ def make_inputs(input_file: Optional[str],
                                                                 translator=translator)
     else:
         input_factors = [] if input_factors is None else input_factors
-        input_frames = [] if input_frames is None else input_frames
+        input_frames = [] if input_frames is None else list(input_frames)
         inputs = [input_file] + input_factors + input_frames
         if not input_is_json and input_frames == []:
             check_condition(translator.num_source_factors == len(inputs),
@@ -236,6 +236,7 @@ def read_and_translate(translator: inference.Translator,
     :param input_frames: Optional path to file that contains frames / time stamps for the source file
     :param input_is_json: Whether the input is in json format.
     """
+
    
     batch_size = translator.max_batch_size
     if chunk_size is None:

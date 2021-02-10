@@ -594,7 +594,9 @@ class RawParallelDatasetLoader:
                 sample_index = bucket_sample_index[buck_index]
 
                 for i, s in enumerate(sources):
-                    data_source[buck_index][sample_index, 0:source_len, i] = s
+
+                    sorted_s = sorted(s, key=lambda x:x[1])
+                    data_source[buck_index][sample_index, 0:source_len, i] = sorted_s
                 
                 for i, t in enumerate(targets):
                     if i == 0 or not self.shift_target_factors:
@@ -1508,7 +1510,7 @@ class SequenceReader:
                 if self.add_bos:
                     sequence.insert(0,[self.bos_id,-1])
                 if self.add_eos:
-                    sequence.append([self.eos_id, 10_000])
+                    sequence.append([self.eos_id, 1000])
                 yield sequence
       
         else:

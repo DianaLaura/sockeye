@@ -72,9 +72,9 @@ def test_translate_by_file_frame_embeddings():
 
     with TemporaryDirectory() as temp:
         input_filename = os.path.join(temp, 'input')
-        input_filename_time = os.path.join(temp, 'input_time')
+        input_filename_time = [os.path.join(temp, 'input_time')]
         with open(input_filename, 'w') as f:
-            with open(input_filename_time, 'w') as t:
+            with open(input_filename_time[0], 'w') as t:
                 f.write(TEST_DATA)
                 t.write(TEST_DATA_TIMESTAMPS)
         

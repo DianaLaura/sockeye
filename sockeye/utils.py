@@ -216,7 +216,7 @@ def get_tokens_with_timestamps(tokens: str) -> Iterator[str]:
     for i in range(0, len(tokenline)):
         if (len(tokenline[i]) > 0):
             if timeline[i] == C.SEP_SYMBOL:
-                timeline[i] = C.SEP_ID
+                timeline[i] = 999
             yield (tokenline[i],timeline[i])
 
 def get_prepared_tokens_with_timestamps(line: str) -> Iterator[str]:

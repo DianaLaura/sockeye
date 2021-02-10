@@ -700,7 +700,7 @@ def get_frame_embeddings(length, depth) -> np.ndarray:
     channels = np.arange(depth // 2).reshape((1, -1))
 
     # (length, 1)
-    positions = np.arange(0, length).reshape((-1, 1))
+    positions = np.arange(0, 1000).reshape((-1, 1))
     scaled_positions = positions / np.power(10000, (2 * channels) / depth)
     # sinusoids:
     sin = np.sin(scaled_positions)

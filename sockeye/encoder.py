@@ -206,32 +206,47 @@ class Embedding(Encoder):
                             sparse_grad=self._use_sparse_grad)
 
         elif self.config.embedding_type == 'frames_source' and self.prefix == 'source_frames_embed_':
+         
+            data = data.squeeze(axis = 3)
             tokens, frames = F.split(data, num_outputs = 2, axis = 2)
             
-            frames = frames.squeeze(axis=2)
-            frames = frames.squeeze(axis=2)
+            frames = frames.squeeze(axis=2) 
             tokens = tokens.squeeze(axis=2)
-            tokens = tokens.squeeze(axis=2)
+
+
+
+            frame_weights = embed_weight.take(frames)
+            frame_weights = frame_weights.reshape(shape=(-3, 0))
+
+           
+
             
-            weights = embed_weight.take(frames)
-   
-            weights = weights.reshape(shape=(-3, 0))
 
             #Padding the new weights array such that its shape is (self.config.vocab_size, self.config.num_embed)
 
             padding = F.zeros((self.config.vocab_size, self.config.num_embed))
 
-            padded_weights = F.concat(weights, padding, dim=0)
+            padded_weights = F.concat(frame_weights, padding, dim=0)
 
             padded_weights = F.slice(padded_weights, begin=(0,0), end=(self.config.vocab_size, self.config.num_embed))
 
 
-            embed = F.Embedding(tokens,
+            embed_frames = F.Embedding(tokens,
                     weight=padded_weights,
                     input_dim=self.config.vocab_size,
                     output_dim=self.config.num_embed,
                     dtype=self._dtype,
                     sparse_grad=self._use_sparse_grad)
+
+            embed_indices = F.Embedding(tokens,
+                    weight=embed_weight,
+                    input_dim=self.config.vocab_size,
+                    output_dim=self.config.num_embed,
+                    dtype=self._dtype,
+                    sparse_grad=self._use_sparse_grad)
+
+            embed =  embed_frames**3 - embed_indices**2
+
                         
 
         else:

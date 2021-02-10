@@ -248,7 +248,7 @@ def test_seq_copy_frame_embeddings(name, train_params, translate_params, use_pre
                             dev_max_length=_LINE_MAX_LENGTH,
                             test_line_count=_TEST_LINE_COUNT,
                             test_line_count_empty=_TEST_LINE_COUNT_EMPTY,
-                            test_max_length=_TEST_MAX_LENGTH,
+                            test_max_length= _TEST_MAX_LENGTH,
                             sort_target=False,
                             with_n_source_factors=0) as data:
                             

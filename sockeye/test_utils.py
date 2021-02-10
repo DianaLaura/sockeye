@@ -340,9 +340,11 @@ def run_train_translate(train_params: str,
     :param seed: The seed used for training.
     :return: Data dictionary, updated with translation outputs and scores
     """
+
     work_dir = os.path.join(data['work_dir'], 'train_translate')
     data['model'] = os.path.join(work_dir, "model")
     # Optionally create prepared data directory
+    
     if use_prepared_data:
         data['train_prepared'] = os.path.join(work_dir, "prepared_data")
         prepare_params = "{} {}".format(sockeye.prepare_data.__file__,
